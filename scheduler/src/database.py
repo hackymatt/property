@@ -3,6 +3,7 @@
 from typing import Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 from src.logger import logger
 from config import DATABASE_URL
 
@@ -36,6 +37,13 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}", exc_info=True)
             raise
+
+    async def test_connection(self):
+        """Execute a lightweight test query to verify connectivity"""
+        if not self.engine:
+            raise RuntimeError("Database engine not initialized")
+        async with self.engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
 
     async def close(self):
         """Close database connection"""

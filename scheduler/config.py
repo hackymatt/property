@@ -21,4 +21,14 @@ else:
     DATABASE_URL = 'sqlite+aiosqlite:///db.sqlite3'
 
 # Scheduler settings
-CHECK_INTERVAL = 1  # Check database every N seconds
+CHECK_INTERVAL = 60  # Check database every N seconds
+STARTUP_RETRIES = int(os.getenv('STARTUP_RETRIES', '5'))
+STARTUP_RETRY_DELAY = int(os.getenv('STARTUP_RETRY_DELAY', '5'))  # seconds
+
+# RabbitMQ settings (defaults align with docker-compose service)
+RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'rabbitmq')
+RABBITMQ_PORT = int(os.getenv('RABBITMQ_PORT', '5672'))
+RABBITMQ_USER = os.getenv('RABBITMQ_USER', 'rabbit')
+RABBITMQ_PASSWORD = os.getenv('RABBITMQ_PASSWORD', 'rabbit')
+RABBITMQ_VHOST = os.getenv('RABBITMQ_VHOST', '/')
+RABBITMQ_SCHEDULE_QUEUE = os.getenv('RABBITMQ_SCHEDULE_QUEUE', 'schedule')

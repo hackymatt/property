@@ -1,12 +1,10 @@
 import uuid
-from datetime import datetime
 from django.db import models
 from django.core.exceptions import ValidationError
-from django.utils import timezone
-from croniter import croniter
 from core.models import BaseModel
 from core.choices import ExecutionStatus
 from job.models import Job
+from shared.cron_utils import calculate_next_run, is_valid_cron
 
 
 class Schedule(BaseModel):
@@ -27,20 +25,15 @@ class Schedule(BaseModel):
         """Validate cron expression."""
         super().clean()
         if self.cron:
-            try:
-                croniter(self.cron, timezone.now())
-            except (ValueError, AttributeError) as e:
-                raise ValidationError({'cron': f'Invalid cron expression: {str(e)}'})
+            if not is_valid_cron(self.cron):
+                raise ValidationError({'cron': f'Invalid cron expression: {self.cron}'})
 
     def save(self, *args, **kwargs):
         """Calculate next_run when saving."""
         if self.cron:
-            try:
-                cron = croniter(self.cron, timezone.now())
-                self.next_run = cron.get_next(datetime)
-            except (ValueError, AttributeError):
-                # Invalid cron expression, keep existing next_run
-                pass
+            next_run = calculate_next_run(self.cron)
+            if next_run:
+                self.next_run = next_run
         super().save(*args, **kwargs)
 
     def __str__(self):

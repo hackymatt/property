@@ -1,14 +1,27 @@
 """Core scheduler implementation"""
 
 import asyncio
+import time
 from datetime import datetime, timezone
 from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
-from croniter import croniter
 from src.models import Schedule, Job
 from src.database import DatabaseManager
 from src.logger import logger
-from config import CHECK_INTERVAL
+from config import (
+    CHECK_INTERVAL,
+    STARTUP_RETRIES,
+    STARTUP_RETRY_DELAY,
+    RABBITMQ_HOST,
+    RABBITMQ_PORT,
+    RABBITMQ_USER,
+    RABBITMQ_PASSWORD,
+    RABBITMQ_VHOST,
+    RABBITMQ_SCHEDULE_QUEUE,
+)
+from shared.cron_utils import calculate_next_run
+from shared.consts import Status
+from shared.rabbitmq import RabbitMQClient
 
 
 class Scheduler:
@@ -18,6 +31,13 @@ class Scheduler:
         self.db = DatabaseManager()
         self.check_interval = CHECK_INTERVAL
         self.running = False
+        self.rabbitmq = RabbitMQClient(
+            host=RABBITMQ_HOST,
+            port=RABBITMQ_PORT,
+            username=RABBITMQ_USER or None,
+            password=RABBITMQ_PASSWORD or None,
+            virtual_host=RABBITMQ_VHOST,
+        )
 
     async def get_schedules_to_run(self) -> list[Schedule]:
         """
@@ -54,28 +74,26 @@ class Scheduler:
         logger.info(f"Running schedule: {schedule.name}")
         
         payload = {'schedule_id': schedule.id,
-                   'status': 'pending',
+                   'status': Status.PENDING,
                    'jobs': [{'source': job.source,
                              'stage': job.stage,
                              'url': job.url,
                              'domain': job.domain.name} for job in schedule.jobs]}
 
-        logger.info(f"Schedule payload: {payload}")
-
-    def calculate_next_run(self, cron_expression: str) -> datetime:
-        """Calculate next run time using croniter"""
-        try:
-            # Use naive datetime since database column is TIMESTAMP WITHOUT TIME ZONE
-            cron = croniter(cron_expression, datetime.now(timezone.utc).replace(tzinfo=None))
-            next_time = cron.get_next(datetime)
-            return next_time
-        except (ValueError, AttributeError) as e:
-            logger.error(f"Invalid cron expression '{cron_expression}': {e}")
-            return None
+        # Publish to schedule queue if RabbitMQ is available
+        if self.rabbitmq:
+            try:
+                self.rabbitmq.publish(queue=RABBITMQ_SCHEDULE_QUEUE, message=payload)
+                logger.info(f"Published schedule payload {payload} to queue '{RABBITMQ_SCHEDULE_QUEUE}'")
+            except Exception as exc:
+                logger.error(f"Failed to publish schedule payload {payload}: {exc}")
 
     async def run(self):
         """Main scheduler loop - checks database every N seconds"""
-        await self.db.init()
+        # Startup checks: ensure DB and RabbitMQ are reachable
+        await self._init_db_with_retry()
+        self._init_rabbit_with_retry()
+
         self.running = True
         logger.info(f"Scheduler started, checking database every {self.check_interval} second(s)")
         table_error_logged = False
@@ -91,7 +109,7 @@ class Scheduler:
                         for schedule in schedules:
                             await self.process_schedule(schedule)
                             # Calculate next run time based on cron expression
-                            next_run = self.calculate_next_run(schedule.cron)
+                            next_run = calculate_next_run(schedule.cron)
                             if next_run:
                                 await self.update_next_run(schedule.id, next_run)
                     
@@ -118,7 +136,50 @@ class Scheduler:
         except Exception as e:
             logger.error(f"Unexpected error: {e}", exc_info=True)
         finally:
+            if self.rabbitmq:
+                try:
+                    self.rabbitmq.close()
+                except Exception:
+                    pass
             await self.db.close()
+
+    async def _init_db_with_retry(self):
+        """Init DB engine and verify connectivity with retries"""
+        for attempt in range(1, STARTUP_RETRIES + 1):
+            try:
+                await self.db.init()
+                await self.db.test_connection()
+                logger.info("Database reachable")
+                return
+            except Exception as exc:
+                if attempt == STARTUP_RETRIES:
+                    logger.error(f"Database connection failed after {attempt} attempt(s): {exc}")
+                    raise
+                logger.warning(
+                    f"Database connection failed (attempt {attempt}/{STARTUP_RETRIES}): {exc}. "
+                    f"Retrying in {STARTUP_RETRY_DELAY}s..."
+                )
+                await asyncio.sleep(STARTUP_RETRY_DELAY)
+
+    def _init_rabbit_with_retry(self):
+        """Init RabbitMQ connection with retries; raise if unreachable"""
+        for attempt in range(1, STARTUP_RETRIES + 1):
+            try:
+                self.rabbitmq.connect()
+                logger.info("Connected to RabbitMQ")
+                return
+            except Exception as exc:
+                if attempt == STARTUP_RETRIES:
+                    logger.error(
+                        f"RabbitMQ connection failed after {attempt} attempt(s): {exc} "
+                        f"[host={RABBITMQ_HOST} user={RABBITMQ_USER}]"
+                    )
+                    raise
+                logger.warning(
+                    f"RabbitMQ connection failed (attempt {attempt}/{STARTUP_RETRIES}): {exc}. "
+                    f"Retrying in {STARTUP_RETRY_DELAY}s... [host={RABBITMQ_HOST} user={RABBITMQ_USER}]"
+                )
+                time.sleep(STARTUP_RETRY_DELAY)
 
     def stop(self):
         """Stop the scheduler"""

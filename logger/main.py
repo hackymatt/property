@@ -7,7 +7,7 @@ from config import (
     RABBITMQ_PORT,
     RABBITMQ_USER,
     RABBITMQ_PASSWORD,
-    RABBITMQ_VHOST
+    RABBITMQ_VHOST,
 )
 from shared.rabbitmq import RabbitMQClient
 from src.service import ScheduleLoggerService

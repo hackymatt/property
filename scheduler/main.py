@@ -13,7 +13,7 @@ from src.logger import logger
 async def main():
     """Entry point for the scheduler"""
     logger.info("Starting scheduler service...")
-    
+
     scheduler = Scheduler()
 
     try:
@@ -23,5 +23,5 @@ async def main():
         raise
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

@@ -7,13 +7,18 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('schedule', '0003_alter_schedule_table_alter_schedulelog_table'),
+        ("schedule", "0003_alter_schedule_table_alter_schedulelog_table"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='schedulelog',
-            name='run_id',
-            field=models.UUIDField(db_index=True, default=uuid.uuid4, editable=False, help_text='Unique identifier for this schedule run'),
+            model_name="schedulelog",
+            name="run_id",
+            field=models.UUIDField(
+                db_index=True,
+                default=uuid.uuid4,
+                editable=False,
+                help_text="Unique identifier for this schedule run",
+            ),
         ),
     ]

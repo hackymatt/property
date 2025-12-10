@@ -4,13 +4,13 @@ from django.conf import settings
 
 
 class Command(BaseCommand):
-    help = 'Create a superuser from settings'
+    help = "Create a superuser from settings"
 
     def handle(self, *args, **options):
-        superuser_config = getattr(settings, 'SUPERUSER', {})
-        username = superuser_config.get('username', 'admin')
-        email = superuser_config.get('email', 'admin@example.com')
-        password = superuser_config.get('password', 'admin')
+        superuser_config = getattr(settings, "SUPERUSER", {})
+        username = superuser_config.get("username", "admin")
+        email = superuser_config.get("email", "admin@example.com")
+        password = superuser_config.get("password", "admin")
 
         if User.objects.filter(username=username).exists():
             self.stdout.write(

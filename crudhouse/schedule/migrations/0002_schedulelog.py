@@ -7,24 +7,59 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('schedule', '0001_initial'),
+        ("schedule", "0001_initial"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='ScheduleLog',
+            name="ScheduleLog",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('status', models.CharField(choices=[('pending', 'Pending'), ('running', 'Running'), ('success', 'Success'), ('failed', 'Failed'), ('cancelled', 'Cancelled')], default='pending', max_length=20)),
-                ('metadata', models.JSONField(blank=True, default=dict, help_text='Additional metadata about execution (jobs_run, errors, etc.)')),
-                ('schedule', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='logs', to='schedule.schedule')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "Pending"),
+                            ("running", "Running"),
+                            ("success", "Success"),
+                            ("failed", "Failed"),
+                            ("cancelled", "Cancelled"),
+                        ],
+                        default="pending",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "metadata",
+                    models.JSONField(
+                        blank=True,
+                        default=dict,
+                        help_text="Additional metadata about execution (jobs_run, errors, etc.)",
+                    ),
+                ),
+                (
+                    "schedule",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="logs",
+                        to="schedule.schedule",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Schedule Log',
-                'verbose_name_plural': 'Schedule Logs',
-                'ordering': ['-created_at'],
+                "verbose_name": "Schedule Log",
+                "verbose_name_plural": "Schedule Logs",
+                "ordering": ["-created_at"],
             },
         ),
     ]

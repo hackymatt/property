@@ -62,7 +62,14 @@ class RabbitMQClient:
         q = await self._channel.declare_queue(queue, durable=durable)
         body = json.dumps(message).encode()
         await self._channel.default_exchange.publish(
-            aio_pika.Message(body=body, delivery_mode=aio_pika.DeliveryMode.PERSISTENT if durable else aio_pika.DeliveryMode.NOT_PERSISTENT),
+            aio_pika.Message(
+                body=body,
+                delivery_mode=(
+                    aio_pika.DeliveryMode.PERSISTENT
+                    if durable
+                    else aio_pika.DeliveryMode.NOT_PERSISTENT
+                ),
+            ),
             routing_key=q.name,
         )
 

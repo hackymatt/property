@@ -8,14 +8,16 @@ from config import (
     RABBITMQ_SCHEDULE_QUEUE,
     STARTUP_RETRIES,
     STARTUP_RETRY_DELAY,
-    DATABASE_URL
+    DATABASE_URL,
 )
 from src import models
 
 
 class ScheduleLoggerService:
     def __init__(self, rabbitmq):
-        self.db = DatabaseManager(database_url=DATABASE_URL, logger_name="schedule-logger")
+        self.db = DatabaseManager(
+            database_url=DATABASE_URL, logger_name="schedule-logger"
+        )
         self.rabbitmq = rabbitmq
 
     async def run(self):
@@ -23,7 +25,7 @@ class ScheduleLoggerService:
         # Reflect models from database schema
         await self.db.reflect_models(models.Base)
         models.ScheduleLog = models.Base.classes.schedulelog
-        
+
         await self.rabbitmq.connect_with_retry(
             retries=STARTUP_RETRIES,
             delay=STARTUP_RETRY_DELAY,
@@ -40,7 +42,7 @@ class ScheduleLoggerService:
         run_id = payload.pop("run_id")
         schedule_id = payload.pop("schedule_id")
         status = payload.pop("status")
-        metadata = payload # remaining fields as metadata
+        metadata = payload  # remaining fields as metadata
 
         async with self.db.get_session() as session:
             now = datetime.now(timezone.utc)
@@ -54,4 +56,6 @@ class ScheduleLoggerService:
             )
             session.add(log_entry)
             await session.commit()
-        logger.info(f"Inserted ScheduleLog for run_id={run_id} schedule_id={schedule_id} status={status}")
+        logger.info(
+            f"Inserted ScheduleLog for run_id={run_id} schedule_id={schedule_id} status={status}"
+        )

@@ -5,25 +5,19 @@ from .models import Schedule, ScheduleLog
 
 @admin.register(Schedule)
 class ScheduleAdmin(admin.ModelAdmin):
-    list_display = ('name', 'cron', 'is_active', 'next_run', 'created_at')
-    list_filter = ('is_active', 'created_at')
-    search_fields = ('name', 'cron')
-    readonly_fields = ('created_at', 'updated_at', 'next_run')
-    filter_horizontal = ('jobs',)
+    list_display = ("name", "cron", "is_active", "next_run", "created_at")
+    list_filter = ("is_active", "created_at")
+    search_fields = ("name", "cron")
+    readonly_fields = ("created_at", "updated_at", "next_run")
+    filter_horizontal = ("jobs",)
     fieldsets = (
-        ('Schedule Info', {
-            'fields': ('name', 'cron', 'is_active')
-        }),
-        ('Execution', {
-            'fields': ('next_run',)
-        }),
-        ('Jobs', {
-            'fields': ('jobs',)
-        }),
-        ('Timestamps', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
+        ("Schedule Info", {"fields": ("name", "cron", "is_active")}),
+        ("Execution", {"fields": ("next_run",)}),
+        ("Jobs", {"fields": ("jobs",)}),
+        (
+            "Timestamps",
+            {"fields": ("created_at", "updated_at"), "classes": ("collapse",)},
+        ),
     )
 
     def save_related(self, request, form, formsets, change):
@@ -31,6 +25,7 @@ class ScheduleAdmin(admin.ModelAdmin):
         super().save_related(request, form, formsets, change)
         if not form.instance.jobs.exists():
             from django.contrib import messages
+
             messages.error(request, "Schedule must have at least one job assigned.")
             # Delete the object since it's invalid
             form.instance.delete()
@@ -39,19 +34,15 @@ class ScheduleAdmin(admin.ModelAdmin):
 
 @admin.register(ScheduleLog)
 class ScheduleLogAdmin(admin.ModelAdmin):
-    list_display = ('run_id', 'schedule', 'status', 'created_at')
-    list_filter = ('status', 'created_at', 'schedule__name')
-    search_fields = ('run_id', 'schedule__name', 'metadata')
-    readonly_fields = ('run_id', 'created_at', 'updated_at')
+    list_display = ("run_id", "schedule", "status", "created_at")
+    list_filter = ("status", "created_at", "schedule__name")
+    search_fields = ("run_id", "schedule__name", "metadata")
+    readonly_fields = ("run_id", "created_at", "updated_at")
     fieldsets = (
-        ('Schedule Info', {
-            'fields': ('run_id', 'schedule', 'status')
-        }),
-        ('Metadata', {
-            'fields': ('metadata',)
-        }),
-        ('Timestamps', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
+        ("Schedule Info", {"fields": ("run_id", "schedule", "status")}),
+        ("Metadata", {"fields": ("metadata",)}),
+        (
+            "Timestamps",
+            {"fields": ("created_at", "updated_at"), "classes": ("collapse",)},
+        ),
     )

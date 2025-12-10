@@ -81,7 +81,9 @@ class DatabaseManager:
                 return
             except Exception as exc:
                 if attempt == retries:
-                    self.logger.error(f"Database connection failed after {attempt} attempt(s): {exc}")
+                    self.logger.error(
+                        f"Database connection failed after {attempt} attempt(s): {exc}"
+                    )
                     raise
                 self.logger.warning(
                     f"Database connection failed (attempt {attempt}/{retries}): {exc}. "

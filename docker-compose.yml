@@ -45,6 +45,28 @@ services:
       - crudhouse
       - rabbitmq
     restart: unless-stopped
+  logger:
+    build:
+      context: .
+      dockerfile: ./logger/Dockerfile
+    environment:
+      ENV: ${ENV}
+      DATABASE: ${DATABASE:-postgres}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_SCHEDULE_QUEUE: ${RABBITMQ_SCHEDULE_QUEUE:-schedule}
+    depends_on:
+      - db
+      - rabbitmq
+    restart: unless-stopped
   rabbitmq:
     image: rabbitmq:3.12-management
     hostname: rabbitmq

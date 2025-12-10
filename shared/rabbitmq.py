@@ -1,21 +1,13 @@
-"""Lightweight RabbitMQ helper for publishing and consuming messages."""
+"""Async RabbitMQ helper using aio-pika."""
 
-from typing import Callable, Optional
+import asyncio
 import json
-import pika
+from typing import Callable, Optional, Awaitable
+
+import aio_pika
 
 
 class RabbitMQClient:
-    """
-    Minimal RabbitMQ client using pika.BlockingConnection.
-
-    Usage:
-        client = RabbitMQClient(host, port, username, password)
-        client.connect()
-        client.publish(queue="jobs", message={"id": 1})
-        client.consume(queue="jobs", handler=handle_func)
-    """
-
     def __init__(
         self,
         host: str,
@@ -23,74 +15,77 @@ class RabbitMQClient:
         username: Optional[str] = None,
         password: Optional[str] = None,
         virtual_host: str = "/",
-        heartbeat: int = 600,
-        blocked_connection_timeout: int = 300,
     ):
         self.host = host
         self.port = port
         self.username = username
         self.password = password
         self.virtual_host = virtual_host
-        self.heartbeat = heartbeat
-        self.blocked_connection_timeout = blocked_connection_timeout
-        self._connection: Optional[pika.BlockingConnection] = None
-        self._channel: Optional[pika.adapters.blocking_connection.BlockingChannel] = None
+        self._connection: Optional[aio_pika.RobustConnection] = None
+        self._channel: Optional[aio_pika.abc.AbstractChannel] = None
 
-    def connect(self):
-        """Establish blocking connection and channel."""
-        credentials = None
-        if self.username and self.password:
-            credentials = pika.PlainCredentials(self.username, self.password)
-
-        params = pika.ConnectionParameters(
+    async def connect(self):
+        self._connection = await aio_pika.connect_robust(
             host=self.host,
             port=self.port,
-            virtual_host=self.virtual_host,
-            heartbeat=self.heartbeat,
-            blocked_connection_timeout=self.blocked_connection_timeout,
-            credentials=credentials,
+            login=self.username,
+            password=self.password,
+            virtualhost=self.virtual_host,
         )
-        self._connection = pika.BlockingConnection(params)
-        self._channel = self._connection.channel()
+        self._channel = await self._connection.channel()
 
-    def _ensure_channel(self):
-        if not self._channel or self._channel.is_closed:
+    async def connect_with_retry(self, retries: int, delay: int, logger=None):
+        for attempt in range(1, retries + 1):
+            try:
+                await self.connect()
+                if logger:
+                    logger.info("Connected to RabbitMQ")
+                return
+            except Exception as exc:
+                if attempt == retries:
+                    if logger:
+                        logger.error(
+                            f"RabbitMQ connection failed after {attempt} attempt(s): {exc} "
+                            f"[host={self.host} user={self.username}]"
+                        )
+                    raise
+                if logger:
+                    logger.warning(
+                        f"RabbitMQ connection failed (attempt {attempt}/{retries}): {exc}. "
+                        f"Retrying in {delay}s... [host={self.host} user={self.username}]"
+                    )
+                await asyncio.sleep(delay)
+
+    async def publish(self, queue: str, message, durable: bool = True):
+        if not self._channel:
             raise RuntimeError("RabbitMQ channel is not open. Call connect() first.")
-
-    def publish(self, queue: str, message, routing_key: Optional[str] = None, durable: bool = True):
-        """
-        Publish a message to a queue. Message is JSON-serialized.
-        """
-        self._ensure_channel()
-        self._channel.queue_declare(queue=queue, durable=durable)
-        body = json.dumps(message)
-        self._channel.basic_publish(
-            exchange="",
-            routing_key=routing_key or queue,
-            body=body,
-            properties=pika.BasicProperties(delivery_mode=2 if durable else 1),
+        q = await self._channel.declare_queue(queue, durable=durable)
+        body = json.dumps(message).encode()
+        await self._channel.default_exchange.publish(
+            aio_pika.Message(body=body, delivery_mode=aio_pika.DeliveryMode.PERSISTENT if durable else aio_pika.DeliveryMode.NOT_PERSISTENT),
+            routing_key=q.name,
         )
 
-    def consume(self, queue: str, handler: Callable[[dict], None], auto_ack: bool = False, durable: bool = True):
-        """
-        Consume messages from a queue and pass decoded JSON to handler.
-        """
-        self._ensure_channel()
-        self._channel.queue_declare(queue=queue, durable=durable)
+    async def consume_forever(
+        self,
+        queue: str,
+        handler: Callable[[dict], Awaitable[None]],
+        durable: bool = True,
+    ):
+        if not self._channel:
+            raise RuntimeError("RabbitMQ channel is not open. Call connect() first.")
+        q = await self._channel.declare_queue(queue, durable=durable)
 
-        def _callback(ch, method, properties, body):
-            payload = json.loads(body)
-            handler(payload)
-            if not auto_ack:
-                ch.basic_ack(delivery_tag=method.delivery_tag)
+        async def _callback(message: aio_pika.IncomingMessage):
+            async with message.process():
+                payload = json.loads(message.body.decode())
+                await handler(payload)
 
-        self._channel.basic_qos(prefetch_count=1)
-        self._channel.basic_consume(queue=queue, on_message_callback=_callback, auto_ack=auto_ack)
-        self._channel.start_consuming()
+        await q.consume(_callback)
+        await asyncio.Future()  # run forever
 
-    def close(self):
-        """Close channel and connection if open."""
+    async def close(self):
         if self._channel and not self._channel.is_closed:
-            self._channel.close()
+            await self._channel.close()
         if self._connection and not self._connection.is_closed:
-            self._connection.close()
+            await self._connection.close()

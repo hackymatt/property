@@ -2,23 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy shared code
+# Shared utilities
 COPY shared ./shared
-
-# Install shared dependencies
 RUN pip install --no-cache-dir -r shared/requirements.txt
 
-# Copy application code
-COPY scheduler ./
+# Service code
+COPY logger ./
 
-# Run the scheduler
 CMD ["python", "main.py"]

@@ -6,16 +6,16 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('schedule', '0002_schedulelog'),
+        ("schedule", "0002_schedulelog"),
     ]
 
     operations = [
         migrations.AlterModelTable(
-            name='schedule',
-            table='schedule',
+            name="schedule",
+            table="schedule",
         ),
         migrations.AlterModelTable(
-            name='schedulelog',
-            table='schedulelog',
+            name="schedulelog",
+            table="schedulelog",
         ),
     ]

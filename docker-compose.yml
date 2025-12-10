@@ -2,12 +2,12 @@ version: "3.9"
 services:
   crudhouse:
     build:
-      context: ./crudhouse
+      context: .
+      dockerfile: ./crudhouse/Dockerfile
     ports:
       - "8000:8000"
     volumes:
-      - ./crudhouse/:/usr/src/app/crudhouse
-      - staticfiles:/usr/src/app/crudhouse/static
+      - staticfiles:/usr/src/app/crudhouse/staticfiles
     environment:
       ENV: ${ENV}
       DATABASE: ${DATABASE:-postgres}
@@ -24,7 +24,8 @@ services:
       - db
   scheduler:
     build:
-      context: ./scheduler
+      context: .
+      dockerfile: ./scheduler/Dockerfile
     environment:
       ENV: ${ENV}
       DATABASE: ${DATABASE:-postgres}
@@ -33,9 +34,63 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_SCHEDULE_QUEUE: ${RABBITMQ_SCHEDULE_QUEUE:-schedule}
     depends_on:
       - db
       - crudhouse
+      - rabbitmq
+    restart: unless-stopped
+  logger:
+    build:
+      context: .
+      dockerfile: ./logger/Dockerfile
+    environment:
+      ENV: ${ENV}
+      DATABASE: ${DATABASE:-postgres}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_SCHEDULE_QUEUE: ${RABBITMQ_SCHEDULE_QUEUE:-schedule}
+    depends_on:
+      - db
+      - rabbitmq
+    restart: unless-stopped
+  bench:
+    build:
+      context: .
+      dockerfile: ./bench/Dockerfile
+    environment:
+      ENV: ${ENV}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_SCHEDULE_QUEUE: ${RABBITMQ_SCHEDULE_QUEUE:-schedule}
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-rabbit}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbit}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
     restart: unless-stopped
   db:
     image: postgres:16

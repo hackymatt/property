@@ -8,25 +8,63 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('job', '0001_initial'),
+        ("job", "0001_initial"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Schedule',
+            name="Schedule",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('name', models.CharField(help_text='Schedule name', max_length=255, unique=True)),
-                ('cron', models.CharField(help_text="Cron expression (e.g., '0 */6 * * *' for every 6 hours)", max_length=255)),
-                ('is_active', models.BooleanField(default=True, help_text='Whether this schedule is active')),
-                ('next_run', models.DateTimeField(blank=True, help_text='Next scheduled run time (calculated from cron)', null=True)),
-                ('jobs', models.ManyToManyField(help_text='Jobs to run on this schedule', related_name='schedules', to='job.job')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "name",
+                    models.CharField(
+                        help_text="Schedule name", max_length=255, unique=True
+                    ),
+                ),
+                (
+                    "cron",
+                    models.CharField(
+                        help_text="Cron expression (e.g., '0 */6 * * *' for every 6 hours)",
+                        max_length=255,
+                    ),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True, help_text="Whether this schedule is active"
+                    ),
+                ),
+                (
+                    "next_run",
+                    models.DateTimeField(
+                        blank=True,
+                        help_text="Next scheduled run time (calculated from cron)",
+                        null=True,
+                    ),
+                ),
+                (
+                    "jobs",
+                    models.ManyToManyField(
+                        help_text="Jobs to run on this schedule",
+                        related_name="schedules",
+                        to="job.job",
+                    ),
+                ),
             ],
             options={
-                'verbose_name_plural': 'Schedules',
-                'ordering': ['name'],
+                "verbose_name_plural": "Schedules",
+                "ordering": ["name"],
             },
         ),
     ]

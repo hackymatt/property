@@ -14,6 +14,8 @@ fi
 touch /var/log/cron.log
 printenv | grep -Ev 'BASHOPTS|BASH_VERSINFO|EUID|PPID|SHELLOPTS|UID|LANG|PWD|GPG_KEY|_=' >> /etc/environment
 
+cd /usr/src/app/crudhouse
+
 python manage.py migrate
 
 python manage.py collectstatic --no-input

@@ -2,6 +2,7 @@
 
 import asyncio
 import uuid
+from dataclasses import asdict
 from datetime import datetime, timezone
 from sqlalchemy import select, and_, text
 from src import models
@@ -15,11 +16,13 @@ from config import (
     RABBITMQ_USER,
     RABBITMQ_PASSWORD,
     RABBITMQ_VHOST,
-    RABBITMQ_SCHEDULE_QUEUE,
+    RABBITMQ_SCHEDULE_EXCHANGE,
+    RABBITMQ_EXCHANGE_TYPE,
     DATABASE_URL,
 )
 from shared.cron_utils import calculate_next_run
 from shared.consts import Status
+from shared.payloads import SchedulePayload, ScheduleJob
 from shared.rabbitmq import RabbitMQClient
 from shared.database import DatabaseManager
 
@@ -136,27 +139,49 @@ class Scheduler:
 
     # === Publishing ===
 
-    async def _build_schedule_payload(self, schedule) -> dict:
+    async def _build_schedule_payload(self, schedule) -> SchedulePayload:
         """Build payload for a schedule including jobs and domains"""
         job_ids = await self._get_job_ids_for_schedule(schedule.id)
         jobs_data = await self._get_jobs_with_domains(job_ids)
 
-        return {
-            "run_id": str(uuid.uuid4()),
-            "schedule_id": schedule.id,
-            "status": Status.PENDING,
-            "jobs": jobs_data,
-        }
+        jobs_payload = [
+            ScheduleJob(
+                source=job["source"],
+                stage=job["stage"],
+                url=job["url"],
+                domain=job.get("domain"),
+            )
+            for job in jobs_data
+        ]
 
-    async def _publish_schedule(self, payload: dict):
-        """Publish schedule payload to RabbitMQ queue"""
+        return SchedulePayload(
+            schedule_id=schedule.id,
+            jobs=jobs_payload,
+        )
+
+    async def _publish_schedule(self, payload: SchedulePayload):
+        """Publish schedule payload to exchange with routing key schedule.{run_id}.{status}"""
         if not self.rabbitmq:
             logger.warning("RabbitMQ not available; skipping publish")
             return
 
+        message = asdict(payload)
+        run_id = str(uuid.uuid4())
+        routing_key = f"schedule.{run_id}.{Status.RUNNING}"
+
         try:
-            await self.rabbitmq.publish(queue=RABBITMQ_SCHEDULE_QUEUE, message=payload)
-            logger.info(f"Published schedule payload {payload} to queue")
+            await self.rabbitmq.publish_to_exchange(
+                exchange=RABBITMQ_SCHEDULE_EXCHANGE,
+                routing_key=routing_key,
+                message=message,
+                exchange_type=RABBITMQ_EXCHANGE_TYPE,
+            )
+            logger.info(
+                "Published schedule payload %s to exchange %s with routing_key %s",
+                message,
+                RABBITMQ_SCHEDULE_EXCHANGE,
+                routing_key,
+            )
         except Exception as exc:
             logger.error(f"Failed to publish schedule payload: {exc}", exc_info=True)
 

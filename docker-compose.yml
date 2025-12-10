@@ -67,6 +67,21 @@ services:
       - db
       - rabbitmq
     restart: unless-stopped
+  bench:
+    build:
+      context: .
+      dockerfile: ./bench/Dockerfile
+    environment:
+      ENV: ${ENV}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_SCHEDULE_QUEUE: ${RABBITMQ_SCHEDULE_QUEUE:-schedule}
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
   rabbitmq:
     image: rabbitmq:3.12-management
     hostname: rabbitmq

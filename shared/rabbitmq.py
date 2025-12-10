@@ -73,10 +73,56 @@ class RabbitMQClient:
             routing_key=q.name,
         )
 
+    async def publish_to_exchange(
+        self,
+        exchange: str,
+        routing_key: str,
+        message,
+        exchange_type: aio_pika.ExchangeType = aio_pika.ExchangeType.TOPIC,
+        durable: bool = True,
+    ):
+        """Publish message to an exchange for fanout/topic routing"""
+        if not self._channel:
+            raise RuntimeError("RabbitMQ channel is not open. Call connect() first.")
+        
+        ex = await self._channel.declare_exchange(
+            exchange, exchange_type, durable=durable
+        )
+        body = json.dumps(message).encode()
+        await ex.publish(
+            aio_pika.Message(
+                body=body,
+                delivery_mode=(
+                    aio_pika.DeliveryMode.PERSISTENT
+                    if durable
+                    else aio_pika.DeliveryMode.NOT_PERSISTENT
+                ),
+            ),
+            routing_key=routing_key,
+        )
+
+    async def bind_queue_to_exchange(
+        self,
+        queue: str,
+        exchange: str,
+        routing_key: str,
+        exchange_type: aio_pika.ExchangeType = aio_pika.ExchangeType.TOPIC,
+        durable: bool = True,
+    ):
+        """Bind a queue to an exchange with a routing key"""
+        if not self._channel:
+            raise RuntimeError("RabbitMQ channel is not open. Call connect() first.")
+        
+        ex = await self._channel.declare_exchange(
+            exchange, exchange_type, durable=durable
+        )
+        q = await self._channel.declare_queue(queue, durable=durable)
+        await q.bind(ex, routing_key=routing_key)
+
     async def consume_forever(
         self,
         queue: str,
-        handler: Callable[[dict], Awaitable[None]],
+        handler: Callable[[dict, str], Awaitable[None]],
         durable: bool = True,
     ):
         if not self._channel:
@@ -86,7 +132,8 @@ class RabbitMQClient:
         async def _callback(message: aio_pika.IncomingMessage):
             async with message.process():
                 payload = json.loads(message.body.decode())
-                await handler(payload)
+                routing_key = message.routing_key or ""
+                await handler(payload, routing_key)
 
         await q.consume(_callback)
         await asyncio.Future()  # run forever

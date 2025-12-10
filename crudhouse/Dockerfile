@@ -12,6 +12,7 @@ ENV PYTHONPATH=/usr/src/app/crudhouse:$PYTHONPATH
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gcc \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # install Python dependencies
@@ -24,7 +25,7 @@ COPY . .
 
 EXPOSE 8000
 
-# run entrypoint.sh
-RUN chmod +x ./entrypoint.sh
+# run entrypoint.sh - convert line endings and make executable
+RUN sed -i 's/\r$//' ./entrypoint.sh && chmod +x ./entrypoint.sh
 
 ENTRYPOINT ["./entrypoint.sh"]

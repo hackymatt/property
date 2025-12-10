@@ -56,6 +56,7 @@ class Domain(BaseModel):
         return self.name
 
     class Meta:
+        db_table = 'domain'
         ordering = ['name']
         verbose_name_plural = "Domains"
 

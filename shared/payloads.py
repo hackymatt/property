@@ -1,18 +1,18 @@
 from dataclasses import dataclass
 from typing import List, Optional
 
-from shared.consts import Status
-
 
 @dataclass
-class ScheduleJob:
+class JobPayload:
     source: str
     stage: str
     url: str
-    domain: Optional[str]
+    domain_name: str
+    parent_job_run_id: Optional[str] = None
+    metadata: Optional[dict] = None
 
 
 @dataclass
 class SchedulePayload:
     schedule_id: int
-    jobs: List[ScheduleJob]
+    jobs: List[JobPayload]

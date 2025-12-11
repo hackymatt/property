@@ -1,8 +1,7 @@
 import uuid
 from django.db import models
 from django.core.exceptions import ValidationError
-from core.models import BaseModel
-from core.choices import ExecutionStatus
+from core.models import BaseModel, LogBaseModel
 from job.models import Job
 from shared.cron_utils import calculate_next_run, is_valid_cron
 
@@ -49,30 +48,16 @@ class Schedule(BaseModel):
         verbose_name_plural = "Schedules"
 
 
-class ScheduleLog(BaseModel):
-    run_id = models.UUIDField(
-        default=uuid.uuid4,
-        editable=False,
-        db_index=True,
-        help_text="Unique identifier for this schedule run",
-    )
+class ScheduleRunLog(LogBaseModel):
     schedule = models.ForeignKey(
         Schedule, on_delete=models.CASCADE, related_name="logs"
     )
-    status = models.CharField(
-        max_length=20, choices=ExecutionStatus.CHOICES, default=ExecutionStatus.PENDING
-    )
-    metadata = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="Additional metadata about execution (jobs_run, errors, etc.)",
-    )
 
     def __str__(self):
-        return f"{self.schedule} - {self.run_id} - {self.status} - {self.created_at}"
+        return f"{self.schedule} - {self.schedule_run_id} - {self.status} - {self.created_at}"
 
     class Meta:
-        db_table = "schedulelog"
+        db_table = "schedulerunlog"
         ordering = ["-created_at"]
-        verbose_name = "Schedule Log"
-        verbose_name_plural = "Schedule Logs"
+        verbose_name = "Schedule Run Log"
+        verbose_name_plural = "Schedule Run Logs"

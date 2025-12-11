@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.core.exceptions import ValidationError
-from .models import Schedule, ScheduleLog
+from .models import Schedule, ScheduleRunLog
 
 
 @admin.register(Schedule)
@@ -32,14 +32,14 @@ class ScheduleAdmin(admin.ModelAdmin):
             raise ValidationError("Schedule must have at least one job assigned.")
 
 
-@admin.register(ScheduleLog)
-class ScheduleLogAdmin(admin.ModelAdmin):
-    list_display = ("run_id", "schedule", "status", "created_at")
+@admin.register(ScheduleRunLog)
+class ScheduleRunLogAdmin(admin.ModelAdmin):
+    list_display = ("schedule_run_id", "schedule", "status", "created_at")
     list_filter = ("status", "created_at", "schedule__name")
-    search_fields = ("run_id", "schedule__name", "metadata")
-    readonly_fields = ("run_id", "created_at", "updated_at")
+    search_fields = ("schedule_run_id", "schedule__name", "metadata")
+    readonly_fields = ("schedule_run_id", "created_at", "updated_at")
     fieldsets = (
-        ("Schedule Info", {"fields": ("run_id", "schedule", "status")}),
+        ("Schedule Info", {"fields": ("schedule_run_id", "schedule", "status")}),
         ("Metadata", {"fields": ("metadata",)}),
         (
             "Timestamps",

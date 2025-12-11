@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Job, JobLog
+from .models import Job, JobRunLog
 
 
 @admin.register(Job)
@@ -17,14 +17,47 @@ class JobAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(JobLog)
-class JobLogAdmin(admin.ModelAdmin):
-    list_display = ("run_id", "schedule_run_id", "job", "status", "created_at")
-    list_filter = ("status", "created_at", "job__source", "job__stage")
-    search_fields = ("run_id", "schedule_run_id", "job__source", "metadata")
-    readonly_fields = ("run_id", "schedule_run_id", "created_at", "updated_at")
+@admin.register(JobRunLog)
+class JobRunLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "job_run_id",
+        "schedule_run_id",
+        "parent_job_run_id",
+        "source",
+        "stage",
+        "domain_name",
+        "status",
+        "created_at",
+    )
+    list_filter = ("status", "created_at", "source", "stage", "domain_name")
+    search_fields = (
+        "job_run_id",
+        "schedule_run_id",
+        "parent_job_run_id",
+        "source",
+        "url",
+        "domain_name",
+    )
+    readonly_fields = (
+        "job_run_id",
+        "schedule_run_id",
+        "parent_job_run_id",
+        "created_at",
+        "updated_at",
+    )
     fieldsets = (
-        ("Job Info", {"fields": ("run_id", "schedule_run_id", "job", "status")}),
+        (
+            "Run Info",
+            {
+                "fields": (
+                    "job_run_id",
+                    "schedule_run_id",
+                    "parent_job_run_id",
+                    "status",
+                )
+            },
+        ),
+        ("Job Details", {"fields": ("source", "stage", "url", "domain_name")}),
         ("Metadata", {"fields": ("metadata",)}),
         (
             "Timestamps",

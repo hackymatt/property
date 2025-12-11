@@ -22,7 +22,7 @@ from config import (
 )
 from shared.cron_utils import calculate_next_run
 from shared.consts import Status
-from shared.payloads import SchedulePayload, ScheduleJob
+from shared.payloads import SchedulePayload, JobPayload
 from shared.rabbitmq import RabbitMQClient
 from shared.database import DatabaseManager
 
@@ -128,6 +128,7 @@ class Scheduler:
                 domain = await self._get_domain_for_job(session, job.domain_id)
                 jobs_data.append(
                     {
+                        "id": job.id,
                         "source": job.source,
                         "stage": job.stage,
                         "url": job.url,
@@ -145,11 +146,12 @@ class Scheduler:
         jobs_data = await self._get_jobs_with_domains(job_ids)
 
         jobs_payload = [
-            ScheduleJob(
+            JobPayload(
+                parent_job_run_id=None,
                 source=job["source"],
                 stage=job["stage"],
                 url=job["url"],
-                domain=job.get("domain"),
+                domain_name=job["domain"],
             )
             for job in jobs_data
         ]
@@ -160,14 +162,14 @@ class Scheduler:
         )
 
     async def _publish_schedule(self, payload: SchedulePayload):
-        """Publish schedule payload to exchange with routing key schedule.{run_id}.{status}"""
+        """Publish schedule payload to exchange with routing key schedule.{schedule_run_id}.{status}"""
         if not self.rabbitmq:
             logger.warning("RabbitMQ not available; skipping publish")
             return
 
         message = asdict(payload)
-        run_id = str(uuid.uuid4())
-        routing_key = f"schedule.{run_id}.{Status.RUNNING}"
+        schedule_run_id = str(uuid.uuid4())
+        routing_key = f"schedule.{schedule_run_id}.{Status.PENDING}"
 
         try:
             await self.rabbitmq.publish_to_exchange(

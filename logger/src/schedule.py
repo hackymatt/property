@@ -1,4 +1,4 @@
-"""Schedule logger service - consumes schedule queue and writes ScheduleLog rows (async)"""
+"""Schedule logger service - consumes schedule queue and writes ScheduleRunLog rows (async)"""
 
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -13,10 +13,10 @@ from config import (
     STARTUP_RETRY_DELAY,
 )
 from src import models
-from shared.payloads import SchedulePayload, ScheduleJob
+from shared.payloads import SchedulePayload, JobPayload
 
 
-class ScheduleLoggerService:
+class ScheduleRunLoggerService:
     def __init__(self, db, rabbitmq):
         self.db = db
         self.rabbitmq = rabbitmq
@@ -25,7 +25,7 @@ class ScheduleLoggerService:
         await self.db.init(retries=STARTUP_RETRIES, delay=STARTUP_RETRY_DELAY)
         # Reflect models from database schema
         await self.db.reflect_models(models.Base)
-        models.ScheduleLog = models.Base.classes.schedulelog
+        models.ScheduleRunLog = models.Base.classes.schedulerunlog
 
         await self.rabbitmq.connect_with_retry(
             retries=STARTUP_RETRIES,
@@ -53,7 +53,7 @@ class ScheduleLoggerService:
     def _parse_payload(self, payload: dict) -> SchedulePayload:
         jobs_raw = payload.get("jobs", [])
         jobs = [
-            job if isinstance(job, ScheduleJob) else ScheduleJob(**job)
+            job if isinstance(job, JobPayload) else JobPayload(**job)
             for job in jobs_raw
         ]
 
@@ -63,9 +63,9 @@ class ScheduleLoggerService:
         )
 
     async def _handle_message(self, payload: dict, routing_key: str):
-        # Extract run_id and status from routing key: schedule.{run_id}.{status}
+        # Extract schedule_run_id and status from routing key: schedule.{schedule_run_id}.{status}
         parts = routing_key.split(".")
-        run_id = parts[1] if len(parts) > 1 else None
+        schedule_run_id = parts[1] if len(parts) > 1 else None
         status = parts[2] if len(parts) > 2 else None
 
         schedule_payload = self._parse_payload(payload)
@@ -74,8 +74,8 @@ class ScheduleLoggerService:
 
         async with self.db.get_session() as session:
             now = datetime.now(timezone.utc)
-            log_entry = models.ScheduleLog(
-                run_id=run_id,
+            log_entry = models.ScheduleRunLog(
+                schedule_run_id=schedule_run_id,
                 schedule_id=schedule_id,
                 status=status,
                 metadata=metadata,
@@ -85,5 +85,5 @@ class ScheduleLoggerService:
             session.add(log_entry)
             await session.commit()
         logger.info(
-            f"Inserted ScheduleLog for run_id={run_id} schedule_id={schedule_id} status={status}"
+            f"Inserted ScheduleRunLog for schedule_run_id={schedule_run_id} schedule_id={schedule_id} status={status}"
         )

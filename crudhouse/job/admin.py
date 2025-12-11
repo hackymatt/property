@@ -30,7 +30,14 @@ class JobRunLogAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("status", "created_at", "source", "stage", "domain_name")
-    search_fields = ("job_run_id", "schedule_run_id", "parent_job_run_id", "source", "url", "domain_name")
+    search_fields = (
+        "job_run_id",
+        "schedule_run_id",
+        "parent_job_run_id",
+        "source",
+        "url",
+        "domain_name",
+    )
     readonly_fields = (
         "job_run_id",
         "schedule_run_id",

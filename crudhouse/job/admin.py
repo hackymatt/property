@@ -19,12 +19,12 @@ class JobAdmin(admin.ModelAdmin):
 
 @admin.register(JobLog)
 class JobLogAdmin(admin.ModelAdmin):
-    list_display = ("run_id", "schedule_run_id", "job", "status", "created_at")
+    list_display = ("job_run_id", "schedule_run_id", "job", "status", "created_at")
     list_filter = ("status", "created_at", "job__source", "job__stage")
-    search_fields = ("run_id", "schedule_run_id", "job__source", "metadata")
-    readonly_fields = ("run_id", "schedule_run_id", "created_at", "updated_at")
+    search_fields = ("job_run_id", "schedule_run_id", "job__source", "metadata")
+    readonly_fields = ("job_run_id", "schedule_run_id", "created_at", "updated_at")
     fieldsets = (
-        ("Job Info", {"fields": ("run_id", "schedule_run_id", "job", "status")}),
+        ("Job Info", {"fields": ("job_run_id", "schedule_run_id", "job", "status")}),
         ("Metadata", {"fields": ("metadata",)}),
         (
             "Timestamps",

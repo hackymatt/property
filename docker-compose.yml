@@ -62,7 +62,7 @@ services:
       RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit}
       RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
-      RABBITMQ_SCHEDULE_QUEUE: ${RABBITMQ_SCHEDULE_QUEUE:-schedule}
+      RABBITMQ_SCHEDULE_QUEUE: ${RABBITMQ_SCHEDULE_QUEUE:-logger_schedule}
     depends_on:
       - db
       - rabbitmq
@@ -78,7 +78,25 @@ services:
       RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit}
       RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
-      RABBITMQ_SCHEDULE_QUEUE: ${RABBITMQ_SCHEDULE_QUEUE:-schedule}
+      RABBITMQ_SCHEDULE_QUEUE: ${RABBITMQ_SCHEDULE_QUEUE:-bench_schedule}
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+  scraper:
+    build:
+      context: .
+      dockerfile: ./scraper/Dockerfile
+    environment:
+      ENV: ${ENV}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_JOB_QUEUE: ${RABBITMQ_JOB_QUEUE:-scraper_jobs}
+      RABBITMQ_JOB_EXCHANGE: ${RABBITMQ_JOB_EXCHANGE:-job_exchange}
+      RABBITMQ_EXCHANGE_TYPE: ${RABBITMQ_EXCHANGE_TYPE:-topic}
+      RABBITMQ_ROUTING_KEY: ${RABBITMQ_ROUTING_KEY:-job.*.*.pending}
     depends_on:
       - rabbitmq
     restart: unless-stopped

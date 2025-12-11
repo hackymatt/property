@@ -39,9 +39,9 @@ class JobLog(BaseModel):
         db_index=True,
         null=True,
         blank=True,
-        help_text="UUID of the schedule run that triggered this job (matches ScheduleLog.run_id)",
+        help_text="UUID of the schedule run that triggered this job (matches ScheduleLog.schedule_run_id)",
     )
-    run_id = models.UUIDField(
+    job_run_id = models.UUIDField(
         default=uuid.uuid4,
         editable=False,
         db_index=True,

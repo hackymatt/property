@@ -84,7 +84,7 @@ class RabbitMQClient:
         """Publish message to an exchange for fanout/topic routing"""
         if not self._channel:
             raise RuntimeError("RabbitMQ channel is not open. Call connect() first.")
-        
+
         ex = await self._channel.declare_exchange(
             exchange, exchange_type, durable=durable
         )
@@ -112,7 +112,7 @@ class RabbitMQClient:
         """Bind a queue to an exchange with a routing key"""
         if not self._channel:
             raise RuntimeError("RabbitMQ channel is not open. Call connect() first.")
-        
+
         ex = await self._channel.declare_exchange(
             exchange, exchange_type, durable=durable
         )

@@ -50,7 +50,7 @@ class Schedule(BaseModel):
 
 
 class ScheduleLog(BaseModel):
-    run_id = models.UUIDField(
+    schedule_run_id = models.UUIDField(
         default=uuid.uuid4,
         editable=False,
         db_index=True,
@@ -69,7 +69,7 @@ class ScheduleLog(BaseModel):
     )
 
     def __str__(self):
-        return f"{self.schedule} - {self.run_id} - {self.status} - {self.created_at}"
+        return f"{self.schedule} - {self.schedule_run_id} - {self.status} - {self.created_at}"
 
     class Meta:
         db_table = "schedulelog"

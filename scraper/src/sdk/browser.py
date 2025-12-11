@@ -1,0 +1,80 @@
+from playwright.async_api import async_playwright
+
+
+class Browser:
+    def __init__(self, headless=True, throttle=None):
+        if throttle is None:
+            raise ValueError("throttle parameter is required")
+
+        self.headless = headless
+        self.throttle = throttle
+        self.playwright = None
+        self.browser = None
+        self.page = None
+
+        self.viewport = {"width": 1920, "height": 1080}
+
+        self.user_agent = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+
+        # Anti-detection chromium flags
+        self.chrome_args = [
+            "--disable-blink-features=AutomationControlled",
+            "--disable-dev-shm-usage",
+            "--disable-features=IsolateOrigins,site-per-process",
+            "--disable-web-security",
+            "--disable-infobars",
+            "--window-size=1920,1080",
+            "--start-maximized",
+        ]
+
+    async def __aenter__(self):
+        self.playwright = await async_playwright().__aenter__()
+
+        self.browser = await self.playwright.chromium.launch(
+            headless=self.headless, args=self.chrome_args
+        )
+
+        context = await self.browser.new_context(
+            viewport=self.viewport,
+            user_agent=self.user_agent,
+            locale="pl-PL",
+            timezone_id="Europe/Warsaw",
+        )
+
+        self.page = await context.new_page()
+
+        # <<< Apply stealth manually for async API
+        stealth_js = """
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['pl-PL','pl'] });
+        """
+        await self.page.add_init_script(stealth_js)
+
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.browser:
+            await self.browser.close()
+        if self.playwright:
+            await self.playwright.stop()
+
+    async def goto(self, url, **kwargs):
+        await self.throttle.wait(url)
+        return await self.page.goto(url, **kwargs)
+
+    async def query_selector(self, selector):
+        return await self.page.query_selector(selector)
+
+    async def query_selector_all(self, selector):
+        return await self.page.query_selector_all(selector)
+
+    async def inner_text(self, element):
+        return await element.inner_text() if element else ""
+
+    async def content(self):
+        return await self.page.content()

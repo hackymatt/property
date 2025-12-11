@@ -34,12 +34,12 @@ class ScheduleAdmin(admin.ModelAdmin):
 
 @admin.register(ScheduleLog)
 class ScheduleLogAdmin(admin.ModelAdmin):
-    list_display = ("run_id", "schedule", "status", "created_at")
+    list_display = ("schedule_run_id", "schedule", "status", "created_at")
     list_filter = ("status", "created_at", "schedule__name")
-    search_fields = ("run_id", "schedule__name", "metadata")
-    readonly_fields = ("run_id", "created_at", "updated_at")
+    search_fields = ("schedule_run_id", "schedule__name", "metadata")
+    readonly_fields = ("schedule_run_id", "created_at", "updated_at")
     fieldsets = (
-        ("Schedule Info", {"fields": ("run_id", "schedule", "status")}),
+        ("Schedule Info", {"fields": ("schedule_run_id", "schedule", "status")}),
         ("Metadata", {"fields": ("metadata",)}),
         (
             "Timestamps",

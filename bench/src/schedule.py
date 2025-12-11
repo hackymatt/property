@@ -1,6 +1,8 @@
+import uuid
 from config import (
     RABBITMQ_SCHEDULE_QUEUE,
     RABBITMQ_SCHEDULE_EXCHANGE,
+    RABBITMQ_JOB_EXCHANGE,
     RABBITMQ_EXCHANGE_TYPE,
     RABBITMQ_ROUTING_KEY,
     STARTUP_RETRIES,
@@ -9,7 +11,7 @@ from config import (
 from shared.logger import get_logger
 from shared.consts import Status
 from dataclasses import asdict
-from shared.payloads import SchedulePayload, ScheduleJob
+from shared.payloads import SchedulePayload, JobPayload
 
 logger = get_logger("bench")
 
@@ -45,7 +47,7 @@ class ScheduleService:
     def _parse_payload(self, payload: dict) -> SchedulePayload:
         jobs_raw = payload.get("jobs", [])
         jobs = [
-            job if isinstance(job, ScheduleJob) else ScheduleJob(**job)
+            job if isinstance(job, JobPayload) else JobPayload(**job)
             for job in jobs_raw
         ]
 
@@ -55,24 +57,55 @@ class ScheduleService:
         )
 
     async def _handle_message(self, payload: dict, routing_key: str):
-        # Extract run_id and status from routing key: schedule.{run_id}.{status}
+        # Extract schedule_run_id and status from routing key: schedule.{schedule_run_id}.{status}
         parts = routing_key.split(".")
-        run_id = parts[1] if len(parts) > 1 else None
+        schedule_run_id = parts[1] if len(parts) > 1 else None
         status = parts[2] if len(parts) > 2 else None
 
         logger.info(
-            "[BENCH] Received %s message for run_id=%s: %s",
+            "[BENCH] Received %s message for schedule_run_id=%s: %s",
             status,
-            run_id,
+            schedule_run_id,
             payload,
         )
         schedule_payload = self._parse_payload(payload)
 
+        # Publish schedule running status
+        routing_key_running = f"schedule.{schedule_run_id}.{Status.RUNNING}"
+        await self.rabbitmq.publish_to_exchange(
+            exchange=RABBITMQ_SCHEDULE_EXCHANGE,
+            routing_key=routing_key_running,
+            message=asdict(schedule_payload),
+            exchange_type=RABBITMQ_EXCHANGE_TYPE,
+        )
+        logger.info(
+            "[BENCH] Published RUNNING status for schedule_run_id=%s schedule_id=%s",
+            schedule_run_id,
+            schedule_payload.schedule_id,
+        )
+
+        # Publish individual jobs to job exchange
         for job in schedule_payload.jobs:
+            job_run_id = str(uuid.uuid4())
+            job_payload = JobPayload(
+                job_id=job.job_id,
+                source=job.source,
+                stage=job.stage,
+                url=job.url,
+                domain=job.domain,
+            )
+            job_routing_key = f"job.{schedule_run_id}.{job_run_id}.pending"
+            await self.rabbitmq.publish_to_exchange(
+                exchange=RABBITMQ_JOB_EXCHANGE,
+                routing_key=job_routing_key,
+                message=asdict(job_payload),
+                exchange_type=RABBITMQ_EXCHANGE_TYPE,
+            )
             logger.info(
-                "Processing job source=%s stage=%s url=%s domain=%s",
+                "[BENCH] Published job schedule_run_id=%s job_run_id=%s job_id=%s source=%s stage=%s",
+                schedule_run_id,
+                job_run_id,
+                job.job_id,
                 job.source,
                 job.stage,
-                job.url,
-                job.domain,
             )

@@ -1,11 +1,10 @@
 from dataclasses import dataclass
 from typing import List, Optional
 
-from shared.consts import Status
-
 
 @dataclass
-class ScheduleJob:
+class JobPayload:
+    job_id: int
     source: str
     stage: str
     url: str
@@ -15,4 +14,4 @@ class ScheduleJob:
 @dataclass
 class SchedulePayload:
     schedule_id: int
-    jobs: List[ScheduleJob]
+    jobs: List[JobPayload]

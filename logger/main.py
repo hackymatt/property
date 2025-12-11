@@ -13,11 +13,13 @@ from config import (
 from shared.database import DatabaseManager
 from shared.rabbitmq import RabbitMQClient
 from src.schedule import ScheduleLoggerService
+from src.job import JobLoggerService
 
 
 async def main():
     try:
         db = DatabaseManager(database_url=DATABASE_URL, logger_name="logger")
+
         rabbitmq = RabbitMQClient(
             host=RABBITMQ_HOST,
             port=RABBITMQ_PORT,
@@ -25,8 +27,15 @@ async def main():
             password=RABBITMQ_PASSWORD,
             virtual_host=RABBITMQ_VHOST,
         )
-        service = ScheduleLoggerService(db=db, rabbitmq=rabbitmq)
-        await service.run()
+
+        # Run both schedule and job logger services concurrently
+        schedule_service = ScheduleLoggerService(db=db, rabbitmq=rabbitmq)
+        job_service = JobLoggerService(db=db, rabbitmq=rabbitmq)
+
+        await asyncio.gather(
+            schedule_service.run(),
+            job_service.run(),
+        )
     except KeyboardInterrupt:
         logger.warning("Logger interrupted by user")
     except Exception as exc:

@@ -1,14 +1,10 @@
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
-from core.models import BaseModel
+from core.models import BaseModel, DomainNameField
 
 
 class Domain(BaseModel):
-    name = models.CharField(
-        max_length=255,
-        unique=True,
-        help_text="Domain name (e.g., otodom.pl, facebook.com)",
-    )
+    name = DomainNameField(unique=True)
     is_active = models.BooleanField(
         default=True, help_text="Whether this domain is actively being scraped"
     )

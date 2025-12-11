@@ -4,11 +4,12 @@ from typing import List, Optional
 
 @dataclass
 class JobPayload:
-    job_id: int
     source: str
     stage: str
     url: str
-    domain: Optional[str]
+    domain_name: str
+    parent_job_run_id: Optional[str] = None
+    metadata: Optional[dict] = None
 
 
 @dataclass

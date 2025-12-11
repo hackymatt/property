@@ -12,8 +12,8 @@ from config import (
 )
 from shared.database import DatabaseManager
 from shared.rabbitmq import RabbitMQClient
-from src.schedule import ScheduleLoggerService
-from src.job import JobLoggerService
+from src.schedule import ScheduleRunLoggerService
+from src.job import JobRunLoggerService
 
 
 async def main():
@@ -29,8 +29,8 @@ async def main():
         )
 
         # Run both schedule and job logger services concurrently
-        schedule_service = ScheduleLoggerService(db=db, rabbitmq=rabbitmq)
-        job_service = JobLoggerService(db=db, rabbitmq=rabbitmq)
+        schedule_service = ScheduleRunLoggerService(db=db, rabbitmq=rabbitmq)
+        job_service = JobRunLoggerService(db=db, rabbitmq=rabbitmq)
 
         await asyncio.gather(
             schedule_service.run(),

@@ -1,4 +1,4 @@
-"""Job logger service - consumes job queue and writes JobLog rows (async)"""
+"""Job logger service - consumes job queue and writes JobRunLog rows (async)"""
 
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -16,7 +16,7 @@ from src import models
 from shared.payloads import JobPayload
 
 
-class JobLoggerService:
+class JobRunLoggerService:
     def __init__(self, db, rabbitmq):
         self.db = db
         self.rabbitmq = rabbitmq
@@ -25,7 +25,7 @@ class JobLoggerService:
         await self.db.init(retries=STARTUP_RETRIES, delay=STARTUP_RETRY_DELAY)
         # Reflect models from database schema
         await self.db.reflect_models(models.Base)
-        models.JobLog = models.Base.classes.joblog
+        models.JobRunLog = models.Base.classes.jobrunlog
 
         await self.rabbitmq.connect_with_retry(
             retries=STARTUP_RETRIES,
@@ -52,11 +52,11 @@ class JobLoggerService:
 
     def _parse_payload(self, payload: dict) -> JobPayload:
         return JobPayload(
-            job_id=payload.get("job_id"),
+            parent_job_run_id=payload.get("parent_job_run_id"),
             source=payload.get("source"),
             stage=payload.get("stage"),
             url=payload.get("url"),
-            domain=payload.get("domain"),
+            domain_name=payload.get("domain_name"),
         )
 
     async def _handle_message(self, payload: dict, routing_key: str):
@@ -67,20 +67,19 @@ class JobLoggerService:
         status = parts[3] if len(parts) > 3 else None
 
         job_payload = self._parse_payload(payload)
-        job_id = job_payload.job_id
-        metadata = {
-            "source": job_payload.source,
-            "stage": job_payload.stage,
-            "url": job_payload.url,
-            "domain": job_payload.domain,
-        }
+        parent_job_run_id = job_payload.parent_job_run_id or None
+        metadata = payload.get("metadata", {})
 
         async with self.db.get_session() as session:
             now = datetime.now(timezone.utc)
-            log_entry = models.JobLog(
+            log_entry = models.JobRunLog(
                 schedule_run_id=schedule_run_id,
+                parent_job_run_id=parent_job_run_id,
                 job_run_id=job_run_id,
-                job_id=job_id,
+                domain_name=job_payload.domain_name,
+                source=job_payload.source,
+                stage=job_payload.stage,
+                url=job_payload.url,
                 status=status,
                 metadata=metadata,
                 created_at=now,
@@ -89,5 +88,5 @@ class JobLoggerService:
             session.add(log_entry)
             await session.commit()
         logger.info(
-            f"Inserted JobLog for schedule_run_id={schedule_run_id} job_run_id={job_run_id} job_id={job_id} status={status} source={job_payload.source}"
+            f"Inserted JobRunLog for schedule_run_id={schedule_run_id} job_run_id={job_run_id} status={status} source={job_payload.source}"
         )

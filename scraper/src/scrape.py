@@ -23,7 +23,7 @@ async def scrape(params: JobPayload, throttle_helper) -> dict:
             return {"status": "error", "error": "Source not found"}
 
         # Create source instance with throttle_helper for per-request throttling
-        source = source_cls(domain=params.domain, throttle_helper=throttle_helper)
+        source = source_cls(domain=params.domain_name, throttle_helper=throttle_helper)
 
         # Get method
         method = getattr(source, params.stage, None)

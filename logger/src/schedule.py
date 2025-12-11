@@ -1,4 +1,4 @@
-"""Schedule logger service - consumes schedule queue and writes ScheduleLog rows (async)"""
+"""Schedule logger service - consumes schedule queue and writes ScheduleRunLog rows (async)"""
 
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -16,7 +16,7 @@ from src import models
 from shared.payloads import SchedulePayload, JobPayload
 
 
-class ScheduleLoggerService:
+class ScheduleRunLoggerService:
     def __init__(self, db, rabbitmq):
         self.db = db
         self.rabbitmq = rabbitmq
@@ -25,7 +25,7 @@ class ScheduleLoggerService:
         await self.db.init(retries=STARTUP_RETRIES, delay=STARTUP_RETRY_DELAY)
         # Reflect models from database schema
         await self.db.reflect_models(models.Base)
-        models.ScheduleLog = models.Base.classes.schedulelog
+        models.ScheduleRunLog = models.Base.classes.schedulerunlog
 
         await self.rabbitmq.connect_with_retry(
             retries=STARTUP_RETRIES,
@@ -74,7 +74,7 @@ class ScheduleLoggerService:
 
         async with self.db.get_session() as session:
             now = datetime.now(timezone.utc)
-            log_entry = models.ScheduleLog(
+            log_entry = models.ScheduleRunLog(
                 schedule_run_id=schedule_run_id,
                 schedule_id=schedule_id,
                 status=status,
@@ -85,5 +85,5 @@ class ScheduleLoggerService:
             session.add(log_entry)
             await session.commit()
         logger.info(
-            f"Inserted ScheduleLog for schedule_run_id={schedule_run_id} schedule_id={schedule_id} status={status}"
+            f"Inserted ScheduleRunLog for schedule_run_id={schedule_run_id} schedule_id={schedule_id} status={status}"
         )

@@ -88,11 +88,11 @@ class ScheduleService:
         for job in schedule_payload.jobs:
             job_run_id = str(uuid.uuid4())
             job_payload = JobPayload(
-                job_id=job.job_id,
+                parent_job_run_id=job.parent_job_run_id,
                 source=job.source,
                 stage=job.stage,
                 url=job.url,
-                domain=job.domain,
+                domain_name=job.domain_name,
             )
             job_routing_key = f"job.{schedule_run_id}.{job_run_id}.pending"
             await self.rabbitmq.publish_to_exchange(
@@ -102,10 +102,10 @@ class ScheduleService:
                 exchange_type=RABBITMQ_EXCHANGE_TYPE,
             )
             logger.info(
-                "[BENCH] Published job schedule_run_id=%s job_run_id=%s job_id=%s source=%s stage=%s",
+                "[BENCH] Published job schedule_run_id=%s job_run_id=%s source=%s stage=%s url=%s",
                 schedule_run_id,
                 job_run_id,
-                job.job_id,
                 job.source,
                 job.stage,
+                job.url,
             )

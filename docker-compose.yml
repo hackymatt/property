@@ -7,7 +7,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - staticfiles:/usr/src/app/crudhouse/staticfiles
+      - ./crudhouse:/app/crudhouse
+      - staticfiles:/app/crudhouse/staticfiles
     environment:
       ENV: ${ENV}
       DATABASE: ${DATABASE:-postgres}

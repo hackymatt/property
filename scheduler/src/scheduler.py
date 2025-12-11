@@ -147,11 +147,11 @@ class Scheduler:
 
         jobs_payload = [
             JobPayload(
-                job_id=job["id"],
+                parent_job_run_id=None,
                 source=job["source"],
                 stage=job["stage"],
                 url=job["url"],
-                domain=job.get("domain"),
+                domain_name=job["domain"],
             )
             for job in jobs_data
         ]
@@ -162,14 +162,14 @@ class Scheduler:
         )
 
     async def _publish_schedule(self, payload: SchedulePayload):
-        """Publish schedule payload to exchange with routing key schedule.{run_id}.{status}"""
+        """Publish schedule payload to exchange with routing key schedule.{schedule_run_id}.{status}"""
         if not self.rabbitmq:
             logger.warning("RabbitMQ not available; skipping publish")
             return
 
         message = asdict(payload)
-        run_id = str(uuid.uuid4())
-        routing_key = f"schedule.{run_id}.{Status.PENDING}"
+        schedule_run_id = str(uuid.uuid4())
+        routing_key = f"schedule.{schedule_run_id}.{Status.PENDING}"
 
         try:
             await self.rabbitmq.publish_to_exchange(

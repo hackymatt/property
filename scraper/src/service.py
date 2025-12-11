@@ -7,11 +7,13 @@ from config import (
     RABBITMQ_JOB_EXCHANGE,
     RABBITMQ_EXCHANGE_TYPE,
     RABBITMQ_ROUTING_KEY,
+    RABBITMQ_THROTTLE_QUEUE,
     STARTUP_RETRIES,
     STARTUP_RETRY_DELAY,
 )
 from shared.payloads import JobPayload
 from shared.consts import Status
+from shared.throttle_helper import ThrottleHelper
 from src.scrape import scrape
 from src.logger import logger
 
@@ -19,6 +21,7 @@ from src.logger import logger
 class ScraperService:
     def __init__(self, rabbitmq):
         self.rabbitmq = rabbitmq
+        self.throttle_helper = None
 
     async def run(self):
         await self.rabbitmq.connect_with_retry(
@@ -26,6 +29,15 @@ class ScraperService:
             delay=STARTUP_RETRY_DELAY,
             logger=logger,
         )
+
+        # Initialize throttle helper
+        self.throttle_helper = ThrottleHelper(
+            rabbitmq_client=self.rabbitmq,
+            throttle_queue=RABBITMQ_THROTTLE_QUEUE,
+        )
+        await self.throttle_helper.start()
+        logger.info("Throttle helper initialized")
+
         await self.rabbitmq.bind_queue_to_exchange(
             queue=RABBITMQ_JOB_QUEUE,
             exchange=RABBITMQ_JOB_EXCHANGE,
@@ -33,10 +45,12 @@ class ScraperService:
             exchange_type=RABBITMQ_EXCHANGE_TYPE,
         )
         logger.info(
-            "Scraper service started; waiting for jobs on queue '%s' bound to exchange '%s' with routing_key '%s'",
-            RABBITMQ_JOB_QUEUE,
+            "Scraper service initialized; bound to exchange '%s' with routing_key '%s'",
             RABBITMQ_JOB_EXCHANGE,
             RABBITMQ_ROUTING_KEY,
+        )
+        logger.info(
+            "Scraper service ready to consume jobs from queue '%s'", RABBITMQ_JOB_QUEUE
         )
         await self.rabbitmq.consume_forever(
             queue=RABBITMQ_JOB_QUEUE,
@@ -63,13 +77,17 @@ class ScraperService:
         job_payload = self._parse_payload(payload)
 
         try:
-            # Execute scraper
+            # Execute scraper with throttle_helper for per-request throttling
             params = JobPayload(**payload)
-            # result = await scrape(params)
 
             await self._publish_status(
                 schedule_run_id, run_id, Status.RUNNING, job_payload
             )
+
+            # Pass throttle_helper to scrape - per-request throttling happens in Browser.goto()
+            result = await scrape(params, throttle_helper=self.throttle_helper)
+
+            logger.info(result)
 
             logger.info("[SCRAPER] Job completed successfully run_id=%s", run_id)
             await self._publish_status(
@@ -98,7 +116,7 @@ class ScraperService:
         schedule_run_id: str,
         job_run_id: str,
         status: str,
-        job_payload: JobPayload,        
+        job_payload: JobPayload,
     ):
         """Publish job status update to exchange"""
         routing_key = f"job.{schedule_run_id}.{job_run_id}.{status}"

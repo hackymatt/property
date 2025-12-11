@@ -97,7 +97,36 @@ services:
       RABBITMQ_JOB_EXCHANGE: ${RABBITMQ_JOB_EXCHANGE:-job_exchange}
       RABBITMQ_EXCHANGE_TYPE: ${RABBITMQ_EXCHANGE_TYPE:-topic}
       RABBITMQ_ROUTING_KEY: ${RABBITMQ_ROUTING_KEY:-job.*.*.pending}
+      RABBITMQ_THROTTLE_QUEUE: ${RABBITMQ_THROTTLE_QUEUE:-throttle_requests}
     depends_on:
+      - rabbitmq
+      - throttling
+    restart: unless-stopped
+  throttling:
+    build:
+      context: .
+      dockerfile: ./throttling/Dockerfile
+    environment:
+      ENV: ${ENV}
+      DATABASE: ${DATABASE:-postgres}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_DB: ${REDIS_DB:-0}
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+      RABBITMQ_THROTTLE_QUEUE: ${RABBITMQ_THROTTLE_QUEUE:-throttle_requests}
+      CONFIG_REFRESH_INTERVAL: ${CONFIG_REFRESH_INTERVAL:-60}
+    depends_on:
+      - db
+      - redis
       - rabbitmq
     restart: unless-stopped
   rabbitmq:
@@ -109,6 +138,15 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
     restart: unless-stopped
   db:
     image: postgres:16
@@ -124,3 +162,4 @@ services:
 volumes:
   postgres_data:
   staticfiles:
+  redis_data:

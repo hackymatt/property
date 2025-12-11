@@ -15,5 +15,8 @@ RABBITMQ_JOB_EXCHANGE = os.getenv("RABBITMQ_JOB_EXCHANGE", "job_exchange")
 RABBITMQ_EXCHANGE_TYPE = os.getenv("RABBITMQ_EXCHANGE_TYPE", "topic")
 RABBITMQ_ROUTING_KEY = os.getenv("RABBITMQ_ROUTING_KEY", "job.*.*.pending")
 
+# Throttling service
+RABBITMQ_THROTTLE_QUEUE = os.getenv("RABBITMQ_THROTTLE_QUEUE", "throttle_requests")
+
 STARTUP_RETRIES = int(os.getenv("STARTUP_RETRIES", "5"))
 STARTUP_RETRY_DELAY = int(os.getenv("STARTUP_RETRY_DELAY", "5"))

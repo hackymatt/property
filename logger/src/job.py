@@ -68,11 +68,16 @@ class JobLoggerService:
 
         job_payload = self._parse_payload(payload)
         job_id = job_payload.job_id
-        metadata = {"source": job_payload.source, "stage": job_payload.stage, "url": job_payload.url, "domain": job_payload.domain}
+        metadata = {
+            "source": job_payload.source,
+            "stage": job_payload.stage,
+            "url": job_payload.url,
+            "domain": job_payload.domain,
+        }
 
         async with self.db.get_session() as session:
             now = datetime.now(timezone.utc)
-            log_entry = models.JobLog(                
+            log_entry = models.JobLog(
                 schedule_run_id=schedule_run_id,
                 job_run_id=job_run_id,
                 job_id=job_id,

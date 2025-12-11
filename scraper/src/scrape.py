@@ -3,11 +3,12 @@ from src.logger import logger
 from shared.payloads import JobPayload
 
 
-async def scrape(params: JobPayload) -> dict:
+async def scrape(params: JobPayload, throttle_helper) -> dict:
     """Perform scraping
 
     Args:
         params: Params object with source, stage, and url
+        throttle_helper: ThrottleHelper for per-request throttling in Browser
 
     Returns:
         Dictionary with scraping results
@@ -21,8 +22,8 @@ async def scrape(params: JobPayload) -> dict:
             logger.error(f"Source not found: {params.source}")
             return {"status": "error", "error": "Source not found"}
 
-        # Create source instance
-        source = source_cls()
+        # Create source instance with throttle_helper for per-request throttling
+        source = source_cls(domain=params.domain, throttle_helper=throttle_helper)
 
         # Get method
         method = getattr(source, params.stage, None)
@@ -39,6 +40,8 @@ async def scrape(params: JobPayload) -> dict:
         logger.info(
             f"Method returned {len(result) if isinstance(result, list) else 1} items"
         )
+
+        return result
 
     except Exception as e:
         logger.error(f"Scraping error: {e}", exc_info=True)

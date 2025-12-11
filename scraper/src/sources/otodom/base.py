@@ -1,14 +1,15 @@
+from urllib.parse import urlparse
+
 from src.sources.base import Base
 from src.sdk.browser import Browser
-from src.throttle import DomainThrottle
 
 
 class OtodomBase(Base):
-    throttle = DomainThrottle(max_requests_per_second=1.0, max_requests_per_24h=10000)
-
     async def list_pages(self, url: str):
-        async with Browser(throttle=self.throttle) as browser:
-            await browser.goto(url, wait_until="domcontentloaded")
+        async with Browser(
+            throttle_helper=self.throttle_helper, headless=True
+        ) as browser:
+            await browser.goto(url, domain=self.domain, wait_until="domcontentloaded")
             await browser.page.wait_for_selector(
                 'ul[data-cy="nexus-pagination-component"]', timeout=60000
             )

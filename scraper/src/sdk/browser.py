@@ -1,13 +1,14 @@
+import time
+from urllib.parse import urlparse
 from playwright.async_api import async_playwright
+
+from src.logger import logger
 
 
 class Browser:
-    def __init__(self, headless=True, throttle=None):
-        if throttle is None:
-            raise ValueError("throttle parameter is required")
-
+    def __init__(self, throttle_helper, headless=True):
         self.headless = headless
-        self.throttle = throttle
+        self.throttle_helper = throttle_helper
         self.playwright = None
         self.browser = None
         self.page = None
@@ -63,9 +64,46 @@ class Browser:
         if self.playwright:
             await self.playwright.stop()
 
-    async def goto(self, url, **kwargs):
-        await self.throttle.wait(url)
-        return await self.page.goto(url, **kwargs)
+    async def goto(self, url, domain, **kwargs):
+        """Navigate to URL with automatic throttling and error handling.
+
+        Args:
+            url: URL to navigate to
+            domain: Domain for throttle rate limiting
+            **kwargs: Additional arguments to pass to page.goto()
+
+        Returns:
+            Response from page.goto()
+
+        Raises:
+            RuntimeError: If token acquisition fails after retries
+        """
+        if self.throttle_helper:
+            # Acquire throttle token for the domain before making the request
+            # The context manager ensures token is released even if page.goto fails
+            async with self.throttle_helper.throttled_request(
+                domain, max_retries=3
+            ) as acquired:
+                if not acquired:
+                    logger.error(
+                        f"Failed to acquire throttle token for domain {domain} after retries. "
+                        f"Aborting request to {url}"
+                    )
+                    raise RuntimeError(
+                        f"Failed to acquire throttle token for domain {domain}"
+                    )
+
+                try:
+                    logger.debug(f"Token acquired for {domain}, navigating to {url}")
+                    response = await self.page.goto(url, **kwargs)
+                    logger.debug(f"Navigation to {url} completed successfully")
+                    return response
+                except Exception as e:
+                    logger.error(f"Error navigating to {url}: {e}", exc_info=True)
+                    raise
+        else:
+            logger.debug(f"No throttle helper, navigating directly to {url}")
+            return await self.page.goto(url, **kwargs)
 
     async def query_selector(self, selector):
         return await self.page.query_selector(selector)

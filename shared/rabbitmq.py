@@ -56,10 +56,18 @@ class RabbitMQClient:
                     )
                 await asyncio.sleep(delay)
 
-    async def publish(self, queue: str, message, durable: bool = True):
+    async def publish(
+        self, queue: str, message, durable: bool = True, declare_queue: bool = True
+    ):
         if not self._channel:
             raise RuntimeError("RabbitMQ channel is not open. Call connect() first.")
-        q = await self._channel.declare_queue(queue, durable=durable)
+
+        if declare_queue:
+            q = await self._channel.declare_queue(queue, durable=durable)
+            routing_key = q.name
+        else:
+            routing_key = queue
+
         body = json.dumps(message).encode()
         await self._channel.default_exchange.publish(
             aio_pika.Message(
@@ -70,7 +78,7 @@ class RabbitMQClient:
                     else aio_pika.DeliveryMode.NOT_PERSISTENT
                 ),
             ),
-            routing_key=q.name,
+            routing_key=routing_key,
         )
 
     async def publish_to_exchange(
@@ -137,6 +145,32 @@ class RabbitMQClient:
 
         await q.consume(_callback)
         await asyncio.Future()  # run forever
+
+    async def consume(
+        self,
+        queue: str,
+        callback: Callable,
+        prefetch_count: int = 1,
+        durable: bool = True,
+        auto_delete: bool = False,
+        exclusive: bool = False,
+        blocking: bool = True,
+    ):
+        """Consume messages from a queue with prefetch control."""
+        if not self._channel:
+            raise RuntimeError("RabbitMQ channel is not open. Call connect() first.")
+
+        await self._channel.set_qos(prefetch_count=prefetch_count)
+        q = await self._channel.declare_queue(
+            queue, durable=durable, auto_delete=auto_delete, exclusive=exclusive
+        )
+
+        async def _wrapper(message: aio_pika.IncomingMessage):
+            await callback(message)
+
+        await q.consume(_wrapper)
+        if blocking:
+            await asyncio.Future()  # run forever
 
     async def close(self):
         if self._channel and not self._channel.is_closed:

@@ -4,8 +4,10 @@ from src.sdk.browser import Browser
 
 class OtodomSaleApartmentOwner(OtodomSaleApartmentBase):
     async def list_items(self, url: str):
-        async with Browser(throttle=self.throttle) as browser:
-            await browser.goto(url, wait_until="networkidle")
+        async with Browser(
+            throttle_helper=self.throttle_helper, headless=True
+        ) as browser:
+            await browser.goto(url, domain=self.domain, wait_until="networkidle")
             await browser.page.wait_for_selector(
                 'div[data-cy="search.listing.organic"]'
             )

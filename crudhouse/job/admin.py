@@ -1,9 +1,10 @@
 from django.contrib import admin
+from import_export.admin import ImportExportModelAdmin
 from .models import Job, JobRunLog
 
 
 @admin.register(Job)
-class JobAdmin(admin.ModelAdmin):
+class JobAdmin(ImportExportModelAdmin, admin.ModelAdmin):
     list_display = ("source", "stage", "domain", "is_active", "created_at")
     list_filter = ("stage", "source", "domain", "is_active", "created_at")
     search_fields = ("source", "url", "domain__name")
@@ -18,7 +19,7 @@ class JobAdmin(admin.ModelAdmin):
 
 
 @admin.register(JobRunLog)
-class JobRunLogAdmin(admin.ModelAdmin):
+class JobRunLogAdmin(ImportExportModelAdmin, admin.ModelAdmin):
     list_display = (
         "job_run_id",
         "schedule_run_id",

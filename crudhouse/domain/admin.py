@@ -1,9 +1,11 @@
 from django.contrib import admin
+from import_export.admin import ImportExportModelAdmin
+
 from .models import Domain
 
 
 @admin.register(Domain)
-class DomainAdmin(admin.ModelAdmin):
+class DomainAdmin(ImportExportModelAdmin, admin.ModelAdmin):
     list_display = (
         "name",
         "is_active",

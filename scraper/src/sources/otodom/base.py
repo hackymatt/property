@@ -1,28 +1,29 @@
-from urllib.parse import urlparse
-
 from src.sources.base import Base
 from src.sdk.browser import Browser
 
+import json
+
 
 class OtodomBase(Base):
-    async def list_pages(self, url: str):
+    OFFER_URL_PREFIX = "https://www.otodom.pl/pl/oferta/"
+
+    async def _get_data_from_page(self, url: str):
         async with Browser(
             throttle_helper=self.throttle_helper, headless=True
         ) as browser:
             await browser.goto(url, domain=self.domain, wait_until="domcontentloaded")
-            await browser.page.wait_for_selector(
-                'ul[data-cy="nexus-pagination-component"]', timeout=60000
+
+            data = await browser.page.eval_on_selector(
+                "#__NEXT_DATA__", "el => el.textContent"
             )
 
-            last_page_button = await browser.query_selector_all(
-                'ul[data-cy="nexus-pagination-component"] button.css-k2c6vi'
-            )
-            last_page = 1
-            if len(last_page_button):
-                last_page_text = await browser.inner_text(last_page_button[-1])
-                last_page = int(last_page_text.strip())
+            return json.loads(data)
 
-            return [f"{url}?page={i}" for i in range(1, last_page + 1)]
+    async def list_pages(self, url: str):
+        return await self._get_data_from_page(url)
 
     async def list_items(self, url: str):
-        raise NotImplementedError
+        return await self._get_data_from_page(url)
+
+    async def get_item(self, url: str):
+        return await self._get_data_from_page(url)

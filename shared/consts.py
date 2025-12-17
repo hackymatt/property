@@ -16,4 +16,6 @@ class Stage:
 
 
 class Source:
-    OTODOM_SALE_APARTMENT_OWNER = "otodom/sale/apartment/owner"
+    OTODOM_SELL_APARTMENT_OWNER = "otodom/sell/apartment/owner"
+    OTODOM_SELL_APARTMENT_AGENCY = "otodom/sell/apartment/agency"
+    OTODOM_SELL_APARTMENT_DEVELOPER = "otodom/sell/apartment/developer"

@@ -8,6 +8,7 @@ Location = None
 AdvertiserType = None
 AdvertiserName = None
 DevelopmentName = None
+InvestmentState = None
 MarketType = None
 TransactionType = None
 PropertyType = None

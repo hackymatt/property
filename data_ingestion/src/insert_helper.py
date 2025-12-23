@@ -72,6 +72,19 @@ class Insert:
                 f"[DATA_INGESTION] Inserted DevelopmentName '{development_name}' for schedule_run_id={self.schedule_run_id} job_run_id={self.job_run_id} (ignored if duplicate)"
             )
 
+    async def investment_state(self, investment_state):
+        if investment_state:
+            async with self.db.get_session() as session:
+                await insert_ignore(
+                    session,
+                    models.InvestmentState,
+                    self._add_base_fields({"name": investment_state}),
+                    ["name"],
+                )
+            self.logger.info(
+                f"[DATA_INGESTION] Inserted InvestmentState '{investment_state}' for schedule_run_id={self.schedule_run_id} job_run_id={self.job_run_id} (ignored if duplicate)"
+            )
+
     async def market_type(self, market_type):
         if market_type:
             async with self.db.get_session() as session:

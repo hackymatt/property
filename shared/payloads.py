@@ -26,9 +26,12 @@ class AdPayload:
     advertiser_type: str
     advertiser_name: Optional[str]
     development_name: Optional[str]
+    investment_state: Optional[str]
+    investment_estimated_delivery: Optional[str]
     url: str
     market_type: str
     transaction_type: str
+    free_from: Optional[str]
 
 
 @dataclass

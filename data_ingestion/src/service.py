@@ -30,6 +30,7 @@ class Service:
         models.AdvertiserType = models.Base.classes.advertiser_type
         models.AdvertiserName = models.Base.classes.advertiser_name
         models.DevelopmentName = models.Base.classes.development_name
+        models.InvestmentState = models.Base.classes.investment_state
         models.MarketType = models.Base.classes.market_type
         models.TransactionType = models.Base.classes.transaction_type
         models.PropertyType = models.Base.classes.property_type

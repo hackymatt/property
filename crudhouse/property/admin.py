@@ -248,6 +248,7 @@ class ApartmentListingAdmin(ImportExportModelAdmin):
         "market_type",
         "transaction_type",
         "last_seen_at",
+        "created_at",
     )
     search_fields = (
         "url",

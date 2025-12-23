@@ -36,7 +36,7 @@ class ApartmentHandler:
         for key, value in apartment_data.items():
             if key in skip_fields:
                 continue
-            current_value = self.normalize_value(getattr(apartment, key), key)
+            current_value = self.normalize_value(getattr(apartment, key, None), key)
             new_value = self.normalize_value(value, key)
             if current_value != new_value:
                 change_data = {
@@ -69,6 +69,7 @@ class ApartmentHandler:
             self.insert.advertiser_type(ad.advertiser_type),
             self.insert.advertiser_name(ad.advertiser_name),
             self.insert.development_name(ad.development_name),
+            self.insert.investment_state(ad.investment_state),
             self.insert.market_type(ad.market_type),
             self.insert.transaction_type(ad.transaction_type),
             self.insert.property_type(property.type),
@@ -85,6 +86,11 @@ class ApartmentHandler:
         apartment_data = {
             **{
                 **ad_data,
+                "free_from": (
+                    datetime.strptime(ad.free_from, "%Y-%m-%d").date()
+                    if ad.free_from
+                    else None
+                ),
                 "created_at": datetime.strptime(ad.created_at, "%Y-%m-%dT%H:%M:%S%z"),
                 "updated_at": datetime.strptime(ad.updated_at, "%Y-%m-%dT%H:%M:%S%z"),
             },

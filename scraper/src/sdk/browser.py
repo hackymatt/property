@@ -1,5 +1,3 @@
-import time
-from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 
 from src.logger import logger

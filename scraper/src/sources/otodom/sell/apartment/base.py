@@ -34,18 +34,45 @@ class OtodomSellApartmentBase(OtodomSellBase):
         address_data = deep_get(location_data, ["address"], {})
         coordinates = deep_get(location_data, ["coordinates"], {})
         target = deep_get(ad_data, ["target"], {})
+        additional_info = deep_get(ad_data, ["additionalInformation"], {})
         owner = deep_get(ad_data, ["owner"], {})
         agency = deep_get(ad_data, ["agency"], {}) or {}
+
+        development_url = ad_data.get("developmentUrl")
+        investment_data = (
+            await super().get_item(development_url) if development_url else {}
+        )
+
+        project_finish = None
+        for info in deep_get(
+            investment_data, ["props", "pageProps", "ad", "topInformation"], []
+        ):
+            if info.get("label") == "project_finish_date":
+                project_finish = get_first(info.get("values"))
+                break
+
+        free_from = None
+        for info in additional_info:
+            if info.get("label") == "free_from":
+                free_from = get_first(info.get("values"))
+                break
 
         ad = AdPayload(
             created_at=ad_data.get("createdAt"),
             updated_at=ad_data.get("modifiedAt"),
             development_name=ad_data.get("developmentTitle"),
+            investment_state=get_first(
+                deep_get(
+                    investment_data, ["props", "pageProps", "ad", "target"], {}
+                ).get("State")
+            ),
+            investment_estimated_delivery=project_finish,
             advertiser_type=owner.get("type"),
             advertiser_name=agency.get("name") if isinstance(agency, dict) else None,
             url=url,
             market_type=target.get("MarketType"),
             transaction_type="sell",
+            free_from=free_from,
         )
 
         location = LocationPayload(
@@ -69,7 +96,9 @@ class OtodomSellApartmentBase(OtodomSellBase):
             rooms_num=get_first(target.get("Rooms_num")),
             floor_no=get_first(target.get("Floor_no")),
             building_floors_num=target.get("Building_floors_num"),
-            build_year=int(target.get("Build_year")),
+            build_year=(
+                int(target.get("Build_year")) if target.get("Build_year") else None
+            ),
             construction_status=get_first(target.get("Construction_status")),
             building_type=get_first(target.get("Building_type")),
             building_material=get_first(target.get("Building_material")),

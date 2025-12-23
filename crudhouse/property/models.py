@@ -90,6 +90,11 @@ class DevelopmentName(BaseModel):
         db_table = "development_name"
 
 
+class InvestmentState(NameTranslationModel):
+    class Meta(NameTranslationModel.Meta):
+        db_table = "investment_state"
+
+
 class MarketType(NameTranslationModel):
     class Meta(NameTranslationModel.Meta):
         db_table = "market_type"
@@ -167,8 +172,13 @@ class ApartmentListing(LocationBase):
     advertiser_type = models.CharField(max_length=128)
     advertiser_name = models.CharField(max_length=128, blank=True, null=True)
     development_name = models.CharField(max_length=128, blank=True, null=True)
+    investment_state = models.CharField(max_length=128, blank=True, null=True)
+    investment_estimated_delivery = models.CharField(
+        max_length=128, blank=True, null=True
+    )
     market_type = models.CharField(max_length=128)
     transaction_type = models.CharField(max_length=128)
+    free_from = models.DateField(blank=True, null=True)
     last_seen_at = models.DateTimeField()
 
     def __str__(self):

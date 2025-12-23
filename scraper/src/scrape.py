@@ -20,7 +20,7 @@ async def scrape(params: JobPayload, throttle_helper) -> dict:
         source_cls = SourceRegistry.get(params.source)
         if not source_cls:
             logger.error(f"Source not found: {params.source}")
-            return {"status": "error", "error": "Source not found"}
+            raise Exception("Source not found")
 
         # Create source instance with throttle_helper for per-request throttling
         source = source_cls(domain=params.domain_name, throttle_helper=throttle_helper)
@@ -29,10 +29,7 @@ async def scrape(params: JobPayload, throttle_helper) -> dict:
         method = getattr(source, params.stage, None)
         if method is None:
             logger.error(f"Method '{params.stage}' not found on {params.source}")
-            return {
-                "status": "error",
-                "error": f"Method '{params.stage}' not found",
-            }
+            raise Exception(f"Method '{params.stage}' not found")
 
         # Call method
         logger.info(f"Calling method: {params.stage}")
@@ -45,4 +42,4 @@ async def scrape(params: JobPayload, throttle_helper) -> dict:
 
     except Exception as e:
         logger.error(f"Scraping error: {e}", exc_info=True)
-        return {"status": "error", "error": str(e)}
+        raise e

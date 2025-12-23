@@ -101,9 +101,7 @@ class TokenBucket:
                 try:
                     # Increment concurrent counter - wrapped in try-except for robustness
                     await self.redis_client.incr(self.concurrent_key)
-                    await self.redis_client.expire(
-                        self.concurrent_key, 300
-                    )  # 5 min TTL
+                    await self.redis_client.expire(self.concurrent_key, 60)  # 1 min TTL
                     logger.debug(f"Token acquired for {self.domain}")
                     return True
                 except Exception as e:

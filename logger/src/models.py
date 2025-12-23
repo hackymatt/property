@@ -4,4 +4,5 @@ from sqlalchemy.ext.automap import automap_base
 
 # Will be populated by reflection after engine connect
 Base = automap_base()
-ScheduleRunLog = None  # populated after reflect()
+ScheduleRunLog = None
+JobRunLog = None

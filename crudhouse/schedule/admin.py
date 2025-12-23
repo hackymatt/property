@@ -1,10 +1,12 @@
 from django.contrib import admin
 from django.core.exceptions import ValidationError
+from import_export.admin import ImportExportModelAdmin
+
 from .models import Schedule, ScheduleRunLog
 
 
 @admin.register(Schedule)
-class ScheduleAdmin(admin.ModelAdmin):
+class ScheduleAdmin(ImportExportModelAdmin, admin.ModelAdmin):
     list_display = ("name", "cron", "is_active", "next_run", "created_at")
     list_filter = ("is_active", "created_at")
     search_fields = ("name", "cron")
@@ -33,7 +35,7 @@ class ScheduleAdmin(admin.ModelAdmin):
 
 
 @admin.register(ScheduleRunLog)
-class ScheduleRunLogAdmin(admin.ModelAdmin):
+class ScheduleRunLogAdmin(ImportExportModelAdmin, admin.ModelAdmin):
     list_display = ("schedule_run_id", "schedule", "status", "created_at")
     list_filter = ("status", "created_at", "schedule__name")
     search_fields = ("schedule_run_id", "schedule__name", "metadata")

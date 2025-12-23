@@ -12,7 +12,7 @@ from config import (
     STARTUP_RETRIES,
     STARTUP_RETRY_DELAY,
 )
-from shared.payloads import JobPayload
+from shared.payloads import JobPayload, DataPayload
 from shared.consts import Status, Stage
 from shared.throttle_helper import ThrottleHelper
 from src.scrape import scrape
@@ -178,12 +178,19 @@ class ScraperService:
         """
         stage_mapping = {
             Stage.LIST_PAGES: Stage.LIST_ITEMS,
-            # Stage.LIST_ITEMS: Stage.GET_ITEM,
+            Stage.LIST_ITEMS: Stage.GET_ITEM,
+            Stage.GET_ITEM: None,
         }
 
         next_stage = stage_mapping.get(stage)
         if not next_stage:
-            # publish save data pending event
+            job_routing_key = f"data.{schedule_run_id}.{parent_job_run_id}.pending"
+            await self.rabbitmq.publish_to_exchange(
+                exchange=RABBITMQ_JOB_EXCHANGE,
+                routing_key=job_routing_key,
+                message=asdict(result),
+                exchange_type=RABBITMQ_EXCHANGE_TYPE,
+            )
             logger.info(
                 "[SCRAPER] No follow-up stage for '%s', job chain complete", stage
             )

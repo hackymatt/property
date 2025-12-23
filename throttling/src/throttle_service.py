@@ -55,6 +55,7 @@ class ThrottleService:
         self.token_buckets: Dict[str, TokenBucket] = {}
         self._buckets_lock = asyncio.Lock()
         self.running = False
+        self._self_heal_task = None
 
     async def startup(self):
         """Initialize all connections."""
@@ -85,6 +86,8 @@ class ThrottleService:
         await self.domain_config.start()
 
         logger.info("Throttling service initialized successfully")
+        # Start self-heal background task
+        self._self_heal_task = asyncio.create_task(self._self_heal_counters())
 
     async def shutdown(self):
         """Cleanup connections on shutdown."""
@@ -99,6 +102,47 @@ class ThrottleService:
             await self.redis_client.close()
 
         logger.info("Throttling service shut down")
+        if self._self_heal_task:
+            self._self_heal_task.cancel()
+            try:
+                await self._self_heal_task
+            except asyncio.CancelledError:
+                pass
+
+    async def _self_heal_counters(self):
+        """Periodically reset stale concurrent counters in Redis."""
+        import time
+
+        logger.info("Starting self-heal task for concurrent counters...")
+        redis = self.redis_client.get_client()
+        while True:
+            try:
+                # Run every 60 seconds
+                await asyncio.sleep(60)
+                # Get all domains
+                if self.domain_config:
+                    configs = await self.domain_config.get_all_configs()
+                    for domain in configs:
+                        key = f"throttle:concurrent:{domain}"
+                        ttl = await redis.ttl(key)
+                        if ttl is not None and ttl > 0 and ttl < 10:
+                            # If TTL is about to expire, reset to 60s
+                            await redis.expire(key, 60)
+                            logger.info(f"Refreshed TTL for {key} to 60s (self-heal)")
+                        val = await redis.get(key)
+                        if (
+                            val is not None
+                            and int(val) > 0
+                            and (ttl is None or ttl < 0)
+                        ):
+                            await redis.set(key, 0, ex=60)
+                            logger.warning(
+                                f"Reset stuck concurrent counter for {key} (self-heal)"
+                            )
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in self-heal task: {e}", exc_info=True)
 
     async def get_or_create_bucket(self, domain: str) -> TokenBucket:
         """Get existing token bucket or create a new one for the domain."""

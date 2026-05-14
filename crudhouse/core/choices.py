@@ -1,17 +1,5 @@
 # Choice definitions for models
-from shared.consts import Source, Stage, Status
-
-
-class JobSource:
-    OTODOM_SELL_APARTMENT_OWNER = Source.OTODOM_SELL_APARTMENT_OWNER
-    OTODOM_SELL_APARTMENT_AGENCY = Source.OTODOM_SELL_APARTMENT_AGENCY
-    OTODOM_SELL_APARTMENT_DEVELOPER = Source.OTODOM_SELL_APARTMENT_DEVELOPER
-
-    CHOICES = [
-        (OTODOM_SELL_APARTMENT_OWNER, "Otodom - Sell - Apartment - Owner"),
-        (OTODOM_SELL_APARTMENT_AGENCY, "Otodom - Sell - Apartment - Agency"),
-        (OTODOM_SELL_APARTMENT_DEVELOPER, "Otodom - Sell - Apartment - Developer"),
-    ]
+from shared.consts import Stage, Status
 
 
 class JobStage:

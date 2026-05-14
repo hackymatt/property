@@ -23,11 +23,10 @@ RABBITMQ_USER = os.getenv("RABBITMQ_USER", "rabbit")
 RABBITMQ_PASSWORD = os.getenv("RABBITMQ_PASSWORD", "rabbit")
 RABBITMQ_VHOST = os.getenv("RABBITMQ_VHOST", "/")
 
-# Data ingestion listens to messages from scraper on job_exchange, queue: data_ingestion_jobs, routing_key: data.*.*.pending
-RABBITMQ_JOB_QUEUE = os.getenv("RABBITMQ_JOB_QUEUE", "data_ingestion_jobs")
-RABBITMQ_JOB_EXCHANGE = os.getenv("RABBITMQ_JOB_EXCHANGE", "job_exchange")
+RABBITMQ_DATA_QUEUE = os.getenv("RABBITMQ_DATA_QUEUE", "data_ingestion_jobs")
+RABBITMQ_DATA_EXCHANGE = os.getenv("RABBITMQ_DATA_EXCHANGE", "data_exchange")
 RABBITMQ_EXCHANGE_TYPE = os.getenv("RABBITMQ_EXCHANGE_TYPE", "topic")
-RABBITMQ_JOB_ROUTING_KEY = os.getenv("RABBITMQ_JOB_ROUTING_KEY", "data.*.*.pending")
+RABBITMQ_DATA_ROUTING_KEY = os.getenv("RABBITMQ_DATA_ROUTING_KEY", "data.*.*.pending")
 
 
 STARTUP_RETRIES = int(os.getenv("STARTUP_RETRIES", "5"))

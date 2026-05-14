@@ -6,4 +6,4 @@ async def insert_ignore(session, model, values: dict, index_elements: list[str])
     if index_elements:
         stmt = stmt.on_conflict_do_nothing(index_elements=index_elements)
     await session.execute(stmt)
-    await session.commit()
+    # Caller is responsible for commit/rollback

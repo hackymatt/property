@@ -10,7 +10,6 @@ from config import (
 )
 from shared.logger import get_logger
 from shared.consts import Status
-from dataclasses import asdict
 from shared.payloads import SchedulePayload, JobPayload
 
 logger = get_logger("bench")
@@ -45,16 +44,7 @@ class ScheduleService:
         )
 
     def _parse_payload(self, payload: dict) -> SchedulePayload:
-        jobs_raw = payload.get("jobs", [])
-        jobs = [
-            job if isinstance(job, JobPayload) else JobPayload(**job)
-            for job in jobs_raw
-        ]
-
-        return SchedulePayload(
-            schedule_id=payload.get("schedule_id"),
-            jobs=jobs,
-        )
+        return SchedulePayload.model_validate(payload)
 
     async def _handle_message(self, payload: dict, routing_key: str):
         # Extract schedule_run_id and status from routing key: schedule.{schedule_run_id}.{status}
@@ -75,7 +65,7 @@ class ScheduleService:
         await self.rabbitmq.publish_to_exchange(
             exchange=RABBITMQ_SCHEDULE_EXCHANGE,
             routing_key=routing_key_running,
-            message=asdict(schedule_payload),
+            message=schedule_payload.model_dump(),
             exchange_type=RABBITMQ_EXCHANGE_TYPE,
         )
         logger.info(
@@ -87,18 +77,11 @@ class ScheduleService:
         # Publish individual jobs to job exchange
         for job in schedule_payload.jobs:
             job_run_id = str(uuid.uuid4())
-            job_payload = JobPayload(
-                parent_job_run_id=job.parent_job_run_id,
-                source=job.source,
-                stage=job.stage,
-                url=job.url,
-                domain_name=job.domain_name,
-            )
             job_routing_key = f"job.{schedule_run_id}.{job_run_id}.pending"
             await self.rabbitmq.publish_to_exchange(
                 exchange=RABBITMQ_JOB_EXCHANGE,
                 routing_key=job_routing_key,
-                message=asdict(job_payload),
+                message=job.model_dump(),
                 exchange_type=RABBITMQ_EXCHANGE_TYPE,
             )
             logger.info(

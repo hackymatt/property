@@ -2,14 +2,14 @@
 
 from src.logger import logger
 from config import (
-    RABBITMQ_JOB_QUEUE,
-    RABBITMQ_JOB_EXCHANGE,
+    RABBITMQ_DATA_QUEUE,
+    RABBITMQ_DATA_EXCHANGE,
     RABBITMQ_EXCHANGE_TYPE,
-    RABBITMQ_JOB_ROUTING_KEY,
+    RABBITMQ_DATA_ROUTING_KEY,
     STARTUP_RETRIES,
     STARTUP_RETRY_DELAY,
 )
-from shared.payloads import AdPayload, LocationPayload, ApartmentPayload, DataPayload
+from shared.payloads import DataPayload
 from src.handlers.apartment import ApartmentHandler
 from src import models
 
@@ -51,30 +51,25 @@ class Service:
             logger=logger,
         )
         await self.rabbitmq.bind_queue_to_exchange(
-            queue=RABBITMQ_JOB_QUEUE,
-            exchange=RABBITMQ_JOB_EXCHANGE,
-            routing_key=RABBITMQ_JOB_ROUTING_KEY,
+            queue=RABBITMQ_DATA_QUEUE,
+            exchange=RABBITMQ_DATA_EXCHANGE,
+            routing_key=RABBITMQ_DATA_ROUTING_KEY,
             exchange_type=RABBITMQ_EXCHANGE_TYPE,
         )
         logger.info(
-            "Job logger started; waiting for messages on queue '%s' bound to exchange '%s' with routing_key '%s'",
-            RABBITMQ_JOB_QUEUE,
-            RABBITMQ_JOB_EXCHANGE,
-            RABBITMQ_JOB_ROUTING_KEY,
+            "Data ingestion started; waiting for messages on queue '%s' bound to exchange '%s' routing_key '%s'",
+            RABBITMQ_DATA_QUEUE,
+            RABBITMQ_DATA_EXCHANGE,
+            RABBITMQ_DATA_ROUTING_KEY,
         )
         await self.rabbitmq.consume_forever(
-            queue=RABBITMQ_JOB_QUEUE,
+            queue=RABBITMQ_DATA_QUEUE,
             handler=self._handle_message,
             durable=True,
         )
 
     def _parse_payload(self, payload: dict) -> DataPayload:
-        # Accepts dict and returns DataPayload instance
-        return DataPayload(
-            ad=AdPayload(**payload.get("ad")),
-            location=LocationPayload(**payload.get("location")),
-            property=ApartmentPayload(**payload.get("property")),
-        )
+        return DataPayload.model_validate(payload)
 
     async def _handle_message(self, payload: dict, routing_key: str):
         # Extract schedule_run_id, job_run_id from routing key: data.{schedule_run_id}.{job_run_id}.pending

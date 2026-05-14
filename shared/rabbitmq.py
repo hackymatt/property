@@ -138,10 +138,14 @@ class RabbitMQClient:
         q = await self._channel.declare_queue(queue, durable=durable)
 
         async def _callback(message: aio_pika.IncomingMessage):
-            async with message.process():
+            try:
                 payload = json.loads(message.body.decode())
                 routing_key = message.routing_key or ""
                 await handler(payload, routing_key)
+                await message.ack()
+            except Exception:
+                # requeue=False: send to DLQ (if configured) rather than looping forever
+                await message.nack(requeue=False)
 
         await q.consume(_callback)
         await asyncio.Future()  # run forever

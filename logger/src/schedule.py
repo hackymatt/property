@@ -1,6 +1,5 @@
 """Schedule logger service - consumes schedule queue and writes ScheduleRunLog rows (async)"""
 
-from dataclasses import asdict
 from datetime import datetime, timezone
 
 from src.logger import logger
@@ -51,26 +50,16 @@ class ScheduleRunLoggerService:
         )
 
     def _parse_payload(self, payload: dict) -> SchedulePayload:
-        jobs_raw = payload.get("jobs", [])
-        jobs = [
-            job if isinstance(job, JobPayload) else JobPayload(**job)
-            for job in jobs_raw
-        ]
-
-        return SchedulePayload(
-            schedule_id=payload.get("schedule_id"),
-            jobs=jobs,
-        )
+        return SchedulePayload.model_validate(payload)
 
     async def _handle_message(self, payload: dict, routing_key: str):
-        # Extract schedule_run_id and status from routing key: schedule.{schedule_run_id}.{status}
         parts = routing_key.split(".")
         schedule_run_id = parts[1] if len(parts) > 1 else None
         status = parts[2] if len(parts) > 2 else None
 
         schedule_payload = self._parse_payload(payload)
         schedule_id = schedule_payload.schedule_id
-        metadata = {"jobs": [asdict(job) for job in schedule_payload.jobs]}
+        metadata = {"jobs": [job.model_dump() for job in schedule_payload.jobs]}
 
         async with self.db.get_session() as session:
             now = datetime.now(timezone.utc)

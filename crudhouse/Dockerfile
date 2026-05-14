@@ -8,13 +8,6 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app:$PYTHONPATH
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    gcc \
-    netcat-openbsd \
-    && rm -rf /var/lib/apt/lists/*
-
 # install Python dependencies
 RUN pip install --upgrade pip
 COPY crudhouse/requirements.txt .

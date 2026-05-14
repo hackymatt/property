@@ -1,5 +1,28 @@
 version: "3.9"
 services:
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - crudhouse
+      - ui
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+      args:
+        BACKEND_URL: http://crudhouse:8000
+    environment:
+      BACKEND_URL: http://crudhouse:8000
+    depends_on:
+      - crudhouse
+    restart: unless-stopped
+
   crudhouse:
     build:
       context: .
@@ -89,6 +112,11 @@ services:
       dockerfile: ./scraper/Dockerfile
     environment:
       ENV: ${ENV}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
       RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
       RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
       RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
@@ -96,12 +124,18 @@ services:
       RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
       RABBITMQ_JOB_QUEUE: ${RABBITMQ_JOB_QUEUE:-scraper_jobs}
       RABBITMQ_JOB_EXCHANGE: ${RABBITMQ_JOB_EXCHANGE:-job_exchange}
+      RABBITMQ_DATA_EXCHANGE: ${RABBITMQ_DATA_EXCHANGE:-data_exchange}
       RABBITMQ_EXCHANGE_TYPE: ${RABBITMQ_EXCHANGE_TYPE:-topic}
       RABBITMQ_ROUTING_KEY: ${RABBITMQ_ROUTING_KEY:-job.*.*.pending}
       RABBITMQ_THROTTLE_QUEUE: ${RABBITMQ_THROTTLE_QUEUE:-throttle_requests}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_DB: ${REDIS_DB:-0}
     depends_on:
+      - db
       - rabbitmq
       - throttling
+      - redis
     restart: unless-stopped
   throttling:
     build:
@@ -146,10 +180,10 @@ services:
       RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit}
       RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
-      RABBITMQ_JOB_QUEUE: ${RABBITMQ_JOB_QUEUE:-data_ingestion_jobs}
-      RABBITMQ_JOB_EXCHANGE: ${RABBITMQ_JOB_EXCHANGE:-job_exchange}
+      RABBITMQ_DATA_QUEUE: ${RABBITMQ_DATA_QUEUE:-data_ingestion_jobs}
+      RABBITMQ_DATA_EXCHANGE: ${RABBITMQ_DATA_EXCHANGE:-data_exchange}
       RABBITMQ_EXCHANGE_TYPE: ${RABBITMQ_EXCHANGE_TYPE:-topic}
-      RABBITMQ_JOB_ROUTING_KEY: ${RABBITMQ_JOB_ROUTING_KEY:-data.*.*.pending}
+      RABBITMQ_DATA_ROUTING_KEY: ${RABBITMQ_DATA_ROUTING_KEY:-data.*.*.pending}
       STARTUP_RETRIES: ${STARTUP_RETRIES:-5}
       STARTUP_RETRY_DELAY: ${STARTUP_RETRY_DELAY:-5}
     depends_on:
@@ -165,6 +199,8 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     restart: unless-stopped
   redis:
     image: redis:7-alpine
@@ -190,3 +226,4 @@ volumes:
   postgres_data:
   staticfiles:
   redis_data:
+  rabbitmq_data:

@@ -20,12 +20,11 @@ def calculate_next_run(cron_expression: str) -> datetime:
         True
     """
     try:
-        # Use naive datetime since database column is TIMESTAMP WITHOUT TIME ZONE
         cron = croniter(
             cron_expression, datetime.now(timezone.utc).replace(tzinfo=None)
         )
         next_time = cron.get_next(datetime)
-        return next_time
+        return next_time.replace(tzinfo=timezone.utc)
     except (ValueError, AttributeError) as e:
         # Log at import site - this module doesn't have logger dependency
         print(f"Invalid cron expression '{cron_expression}': {e}")

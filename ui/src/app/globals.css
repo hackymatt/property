@@ -1,0 +1,8 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+
+/* AG Grid theme overrides for MUI integration */
+.ag-theme-quartz {
+  --ag-font-family: "Roboto", sans-serif;
+  --ag-font-size: 14px;
+}

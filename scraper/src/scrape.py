@@ -1,45 +1,26 @@
-from src.registry import SourceRegistry
+from src.dynamic_scraper import DynamicScraper
+from src.source_loader import SourceLoader
 from src.logger import logger
 from shared.payloads import JobPayload
 
 
-async def scrape(params: JobPayload, throttle_helper) -> dict:
-    """Perform scraping
+async def scrape(params: JobPayload, throttle_helper, source_loader: SourceLoader):
+    logger.info("[scrape] Starting %s — %s", params.source, params.stage)
 
-    Args:
-        params: Params object with source, stage, and url
-        throttle_helper: ThrottleHelper for per-request throttling in Browser
+    config = await source_loader.get(params.source)
+    if config is None:
+        raise ValueError(f"Source '{params.source}' not found in database — add it via Django admin")
 
-    Returns:
-        Dictionary with scraping results
-    """
-    try:
-        logger.info(f"Starting scrape: {params.source} - {params.stage}")
+    scraper = DynamicScraper(config, throttle_helper)
 
-        # Get source class
-        source_cls = SourceRegistry.get(params.source)
-        if not source_cls:
-            logger.error(f"Source not found: {params.source}")
-            raise Exception("Source not found")
+    method = getattr(scraper, params.stage, None)
+    if method is None:
+        raise ValueError(f"Unknown stage '{params.stage}'")
 
-        # Create source instance with throttle_helper for per-request throttling
-        source = source_cls(domain=params.domain_name, throttle_helper=throttle_helper)
-
-        # Get method
-        method = getattr(source, params.stage, None)
-        if method is None:
-            logger.error(f"Method '{params.stage}' not found on {params.source}")
-            raise Exception(f"Method '{params.stage}' not found")
-
-        # Call method
-        logger.info(f"Calling method: {params.stage}")
-        result = await method(params.url)
-        logger.info(
-            f"Method returned {len(result) if isinstance(result, list) else 1} items"
-        )
-
-        return result
-
-    except Exception as e:
-        logger.error(f"Scraping error: {e}", exc_info=True)
-        raise e
+    result = await method(params.url)
+    logger.info(
+        "[scrape] %s returned %s item(s)",
+        params.stage,
+        len(result) if isinstance(result, list) else 1,
+    )
+    return result

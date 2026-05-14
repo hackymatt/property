@@ -1,21 +1,26 @@
 """
-Main Throttling Service
-RabbitMQ-based service that manages rate limiting for scraping requests.
+Throttling Service — dispatcher-based rate limiter.
+
+Each domain gets one DomainThrottle that owns:
+  - a RateLimiter  (token bucket, in-memory, no polling)
+  - a Semaphore    (concurrent-request cap)
+  - a Queue        (pending acquire requests, FIFO)
+  - a dispatcher   (single background coroutine that grants tokens in order)
+
+Incoming RabbitMQ messages are acked immediately so the channel stays clear.
+Releases call semaphore.release() inline — they are never queued.
 """
 
 import asyncio
 import json
+import time
 from typing import Dict
 
 from src.logger import logger
 from src.domain_config import DomainConfig
-from src.token_bucket import TokenBucket
+from src.token_bucket import RateLimiter
 from config import (
     DATABASE_URL,
-    REDIS_HOST,
-    REDIS_PORT,
-    REDIS_DB,
-    REDIS_PASSWORD,
     RABBITMQ_HOST,
     RABBITMQ_PORT,
     RABBITMQ_USER,
@@ -26,24 +31,100 @@ from config import (
     STARTUP_RETRY_DELAY,
 )
 from shared.rabbitmq import RabbitMQClient
-from shared.redis_client import RedisClient
 from shared.database import DatabaseManager
 
-# Dead letter queue for failed requests (retry exhausted)
-RABBITMQ_DLQ = "throttle_requests_dlq"
+
+class DomainThrottle:
+    """Per-domain token dispatcher."""
+
+    # If a granted slot isn't released within this many seconds, auto-release it
+    SLOT_TIMEOUT = 120
+
+    def __init__(self, domain: str, rate: float, burst: int, concurrent_limit: int, rabbitmq: RabbitMQClient):
+        self.domain = domain
+        self._rate_limiter = RateLimiter(rate, burst)
+        self._concurrent_limit = concurrent_limit
+        self._semaphore = asyncio.Semaphore(concurrent_limit)
+        self._queue: asyncio.Queue = asyncio.Queue()
+        self._rabbitmq = rabbitmq
+        self._task: asyncio.Task = None
+        self._paused_until: float = 0.0
+
+    def start(self):
+        self._task = asyncio.create_task(self._dispatcher())
+        logger.info(f"Dispatcher started for domain={self.domain}")
+
+    def stop(self):
+        if self._task:
+            self._task.cancel()
+
+    async def enqueue(self, request_id: str, reply_to: str):
+        await self._queue.put((request_id, reply_to))
+
+    def release(self):
+        try:
+            self._semaphore.release()
+            logger.debug(f"Concurrent slot released for domain={self.domain}")
+        except ValueError:
+            logger.warning(f"release() called with no active slot for domain={self.domain}")
+
+    def pause(self, duration: int):
+        self._paused_until = time.monotonic() + duration
+        logger.warning(f"Domain {self.domain} paused for {duration}s (429 received)")
+
+    async def _dispatcher(self):
+        while True:
+            try:
+                request_id, reply_to = await self._queue.get()
+
+                # Respect 429 pause before doing anything else
+                remaining = self._paused_until - time.monotonic()
+                if remaining > 0:
+                    logger.info(f"Domain {self.domain} is paused, waiting {remaining:.1f}s")
+                    await asyncio.sleep(remaining)
+
+                # Wait for rate-limit token (precise sleep, no polling)
+                await self._rate_limiter.acquire()
+
+                # Wait for a concurrent slot — timeout guards against stale held slots
+                # (e.g. scraper crashed before sending release)
+                try:
+                    await asyncio.wait_for(self._semaphore.acquire(), timeout=self.SLOT_TIMEOUT)
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"Semaphore timeout for domain={self.domain} — "
+                        f"resetting to {self._concurrent_limit} (stale slot detected)"
+                    )
+                    self._semaphore = asyncio.Semaphore(self._concurrent_limit)
+                    await self._semaphore.acquire()
+
+                # Grant the token — fire-and-forget style (don't let send errors stall the queue)
+                try:
+                    await self._rabbitmq.publish(
+                        reply_to,
+                        {
+                            "success": True,
+                            "message": "Token acquired",
+                            "domain": self.domain,
+                            "request_id": request_id,
+                        },
+                        durable=False,
+                        declare_queue=False,
+                    )
+                    logger.debug(f"Token granted domain={self.domain} request_id={request_id}")
+                except Exception:
+                    logger.exception(f"Failed to send token response for domain={self.domain}, releasing slot")
+                    self._semaphore.release()
+
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception(f"Unexpected error in dispatcher for domain={self.domain}")
 
 
 class ThrottleService:
-    """RabbitMQ-based throttling service managing token buckets for all domains."""
-
     def __init__(self):
         self.db = DatabaseManager(database_url=DATABASE_URL, logger_name="throttling")
-        self.redis_client = RedisClient(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            db=REDIS_DB,
-            password=REDIS_PASSWORD,
-        )
         self.rabbitmq = RabbitMQClient(
             host=RABBITMQ_HOST,
             port=RABBITMQ_PORT,
@@ -52,28 +133,15 @@ class ThrottleService:
             virtual_host=RABBITMQ_VHOST,
         )
         self.domain_config: DomainConfig = None
-        self.token_buckets: Dict[str, TokenBucket] = {}
-        self._buckets_lock = asyncio.Lock()
-        self.running = False
-        self._self_heal_task = None
+        self._throttles: Dict[str, DomainThrottle] = {}
+        self._throttles_lock = asyncio.Lock()
 
     async def startup(self):
-        """Initialize all connections."""
         logger.info("Starting throttling service...")
 
-        # Initialize database
         await self.db.init(retries=STARTUP_RETRIES, delay=STARTUP_RETRY_DELAY)
         logger.info("Database initialized")
 
-        # Initialize Redis
-        await self.redis_client.connect_with_retry(
-            retries=STARTUP_RETRIES,
-            delay=STARTUP_RETRY_DELAY,
-            logger=logger,
-        )
-        logger.info("Redis connected")
-
-        # Initialize RabbitMQ
         await self.rabbitmq.connect_with_retry(
             retries=STARTUP_RETRIES,
             delay=STARTUP_RETRY_DELAY,
@@ -81,337 +149,100 @@ class ThrottleService:
         )
         logger.info("RabbitMQ connected")
 
-        # Initialize domain config manager
         self.domain_config = DomainConfig(self.db.get_session)
         await self.domain_config.start()
-
-        logger.info("Throttling service initialized successfully")
-        # Start self-heal background task
-        self._self_heal_task = asyncio.create_task(self._self_heal_counters())
+        logger.info("Throttling service ready")
 
     async def shutdown(self):
-        """Cleanup connections on shutdown."""
         logger.info("Shutting down throttling service...")
-
-        self.running = False
-
+        async with self._throttles_lock:
+            for throttle in self._throttles.values():
+                throttle.stop()
         if self.domain_config:
             await self.domain_config.stop()
-
-        if self.redis_client:
-            await self.redis_client.close()
-
         logger.info("Throttling service shut down")
-        if self._self_heal_task:
-            self._self_heal_task.cancel()
-            try:
-                await self._self_heal_task
-            except asyncio.CancelledError:
-                pass
 
-    async def _self_heal_counters(self):
-        """Periodically reset stale concurrent counters in Redis."""
-        import time
+    async def _get_or_create_throttle(self, domain: str) -> DomainThrottle:
+        async with self._throttles_lock:
+            if domain in self._throttles:
+                return self._throttles[domain]
 
-        logger.info("Starting self-heal task for concurrent counters...")
-        redis = self.redis_client.get_client()
-        while True:
-            try:
-                # Run every 60 seconds
-                await asyncio.sleep(60)
-                # Get all domains
-                if self.domain_config:
-                    configs = await self.domain_config.get_all_configs()
-                    for domain in configs:
-                        key = f"throttle:concurrent:{domain}"
-                        ttl = await redis.ttl(key)
-                        if ttl is not None and ttl > 0 and ttl < 10:
-                            # If TTL is about to expire, reset to 60s
-                            await redis.expire(key, 60)
-                            logger.info(f"Refreshed TTL for {key} to 60s (self-heal)")
-                        val = await redis.get(key)
-                        if (
-                            val is not None
-                            and int(val) > 0
-                            and (ttl is None or ttl < 0)
-                        ):
-                            await redis.set(key, 0, ex=60)
-                            logger.warning(
-                                f"Reset stuck concurrent counter for {key} (self-heal)"
-                            )
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Error in self-heal task: {e}", exc_info=True)
-
-    async def get_or_create_bucket(self, domain: str) -> TokenBucket:
-        """Get existing token bucket or create a new one for the domain."""
-        async with self._buckets_lock:
-            if domain in self.token_buckets:
-                return self.token_buckets[domain]
-
-            # Get config for this domain
             config = await self.domain_config.get_config(domain)
-
-            # Create new bucket with burst_capacity from config
-            max_tokens = config.get("burst_capacity", 2)
-
-            bucket = TokenBucket(
-                redis_client=self.redis_client.get_client(),
+            throttle = DomainThrottle(
                 domain=domain,
-                refill_rate=config["requests_per_second"],
-                max_tokens=max_tokens,
+                rate=config["requests_per_second"],
+                burst=config.get("burst_capacity", 2),
                 concurrent_limit=config["concurrent_requests"],
+                rabbitmq=self.rabbitmq,
             )
-
-            self.token_buckets[domain] = bucket
-            logger.info(f"Created token bucket for domain: {domain}")
-
-            return bucket
-
-    async def handle_acquire_request(self, message_data: dict) -> dict:
-        """
-        Handle an acquire token request.
-
-        Message format:
-        {
-            "action": "acquire",
-            "domain": "example.com",
-            "timeout": 60.0,
-            "reply_to": "scraper_response_queue"
-        }
-
-        Returns response dict to send back.
-        """
-        try:
-            domain = message_data.get("domain")
-            timeout = message_data.get("timeout")
-            # Convert timeout: None or 0 means no timeout
-            if timeout == 0:
-                timeout = None
-
-            if not domain:
-                return {
-                    "success": False,
-                    "error": "Domain is required",
-                }
-
-            bucket = await self.get_or_create_bucket(domain)
-
-            # Try to acquire token
+            throttle.start()
+            self._throttles[domain] = throttle
             logger.info(
-                f"Attempting to acquire token for domain={domain} with timeout={timeout}"
+                f"Created throttle for domain={domain} "
+                f"rate={config['requests_per_second']}/s burst={config.get('burst_capacity', 2)} "
+                f"concurrent={config['concurrent_requests']}"
             )
-            success = await bucket.acquire(timeout=timeout)
-            logger.info(
-                f"Token acquisition result for domain={domain}: success={success}"
-            )
-
-            request_id = message_data.get("request_id")
-
-            if success:
-                return {
-                    "success": True,
-                    "message": "Token acquired",
-                    "domain": domain,
-                    "request_id": request_id,
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": "Timeout waiting for token",
-                    "domain": domain,
-                    "request_id": request_id,
-                }
-
-        except Exception as e:
-            logger.error(f"Error handling acquire request: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": str(e),
-            }
-
-    async def handle_release_request(self, message_data: dict) -> dict:
-        """
-        Handle a release token request.
-
-        Message format:
-        {
-            "action": "release",
-            "domain": "example.com",
-            "reply_to": "scraper_response_queue"
-        }
-
-        Returns response dict to send back.
-        """
-        try:
-            domain = message_data.get("domain")
-
-            if not domain:
-                return {
-                    "success": False,
-                    "error": "Domain is required",
-                }
-
-            bucket = await self.get_or_create_bucket(domain)
-
-            await bucket.release()
-
-            return {
-                "success": True,
-                "message": "Token released",
-                "domain": domain,
-            }
-
-        except Exception as e:
-            logger.error(f"Error handling release request: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": str(e),
-            }
+            return throttle
 
     async def process_message(self, message):
-        """Process incoming RabbitMQ message with dead letter queue handling."""
-        retry_count = (
-            message.headers.get("x-death", [{}])[0].get("count", 0)
-            if hasattr(message, "headers")
-            else 0
-        )
+        try:
+            data = json.loads(message.body.decode())
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            logger.error(f"Malformed message: {e}")
+            await message.reject(requeue=False)
+            return
+
+        action = data.get("action")
+        domain = data.get("domain")
 
         try:
-            body = message.body.decode()
-            data = json.loads(body)
-
-            action = data.get("action")
-            reply_to = data.get("reply_to")
-            domain = data.get("domain")
-
-            # Get domain-specific configuration for max_retries
-            config = await self.domain_config.get_config(domain) if domain else {}
-            max_retries = config.get("max_retries", 3)
-
-            logger.info(
-                f"Processing {action} request for domain={domain} (retry_count={retry_count})"
-            )
-
-            # Handle the request
             if action == "acquire":
-                response = await self.handle_acquire_request(data)
+                request_id = data.get("request_id")
+                reply_to = data.get("reply_to")
+
+                if not domain or not reply_to:
+                    logger.warning(f"acquire missing domain or reply_to: {data}")
+                    await message.reject(requeue=False)
+                    return
+
+                throttle = await self._get_or_create_throttle(domain)
+                await throttle.enqueue(request_id, reply_to)
+                await message.ack()
+                logger.debug(f"Queued acquire domain={domain} request_id={request_id} queue_size={throttle._queue.qsize()}")
+
             elif action == "release":
-                response = await self.handle_release_request(data)
+                if domain and domain in self._throttles:
+                    self._throttles[domain].release()
+                await message.ack()
+
+            elif action == "pause":
+                duration = int(data.get("duration", 60))
+                if domain:
+                    throttle = await self._get_or_create_throttle(domain)
+                    throttle.pause(duration)
+                await message.ack()
+
             else:
-                response = {
-                    "success": False,
-                    "error": f"Unknown action: {action}",
-                }
-
-            # Send response back if reply_to is specified
-            logger.info(f"Response generated: {response}, reply_to={reply_to}")
-            if reply_to:
-                logger.info(
-                    f"Sending response to queue: {reply_to}, success={response.get('success')}"
-                )
-                await self.rabbitmq.publish(
-                    reply_to, response, durable=False, declare_queue=False
-                )
-            else:
-                logger.warning("No reply_to specified, not sending response")
-
-            await message.ack()
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to decode message: {e}")
-            await message.reject(requeue=False)
-        except Exception as e:
-            logger.error(
-                f"Error processing message (retry_count={retry_count}): {e}",
-                exc_info=True,
-            )
-
-            # Implement dead letter queue logic
-            if retry_count < max_retries:
-                # Get retry_delay from domain config
-                retry_delay = config.get("retry_delay", 5.0)
-                logger.warning(
-                    f"Requeuing message for retry ({retry_count + 1}/{max_retries}) after {retry_delay}s delay"
-                )
-                # Wait before requeuing to implement retry delay
-                await asyncio.sleep(retry_delay)
-                await message.reject(requeue=True)
-            else:
-                # Send to DLQ after max retries
-                try:
-                    dlq_message = {
-                        "original_message": (
-                            json.loads(message.body.decode())
-                            if isinstance(message.body, bytes)
-                            else message.body
-                        ),
-                        "error": str(e),
-                        "retry_count": retry_count,
-                        "timestamp": asyncio.get_event_loop().time(),
-                    }
-                    await self.rabbitmq.publish(RABBITMQ_DLQ, dlq_message, durable=True)
-                    logger.error(
-                        f"Message sent to DLQ after {max_retries} retries: {dlq_message}"
-                    )
-                except Exception as dlq_error:
-                    logger.critical(
-                        f"Failed to send message to DLQ: {dlq_error}. Original error: {e}",
-                        exc_info=True,
-                    )
-
+                logger.warning(f"Unknown action: {action}")
                 await message.reject(requeue=False)
 
+        except Exception:
+            logger.exception(f"Error processing {action} for domain={domain}")
+            await message.reject(requeue=False)
+
     async def run(self):
-        """Run the throttling service - consume messages from RabbitMQ."""
         await self.startup()
-
-        self.running = True
-
         try:
-            logger.info(f"Starting to consume from queue: {RABBITMQ_THROTTLE_QUEUE}")
-
-            # Start consuming DLQ messages in background (non-blocking)
-            asyncio.create_task(self._consume_dlq())
-
-            # Main queue consumer
+            logger.info(f"Consuming from queue: {RABBITMQ_THROTTLE_QUEUE}")
             await self.rabbitmq.consume(
                 queue=RABBITMQ_THROTTLE_QUEUE,
                 callback=self.process_message,
-                prefetch_count=100,  # Process up to 100 messages concurrently
+                prefetch_count=200,
             )
         except asyncio.CancelledError:
             logger.info("Received shutdown signal")
-        except Exception as e:
-            logger.critical(f"Fatal error in throttling service: {e}", exc_info=True)
+        except Exception:
+            logger.exception("Fatal error in throttling service")
             raise
         finally:
             await self.shutdown()
-
-    async def _consume_dlq(self):
-        """Consume and log messages from dead letter queue."""
-        try:
-
-            async def dlq_handler(message):
-                try:
-                    body = message.body.decode()
-                    data = json.loads(body)
-                    logger.warning(
-                        f"DLQ Message - domain={data.get('original_message', {}).get('domain')}, "
-                        f"error={data.get('error')}, retry_count={data.get('retry_count')}"
-                    )
-                    await message.ack()
-                except Exception as e:
-                    logger.error(f"Error handling DLQ message: {e}", exc_info=True)
-                    await message.reject(requeue=False)
-
-            await self.rabbitmq.consume(
-                queue=RABBITMQ_DLQ,
-                callback=dlq_handler,
-                prefetch_count=10,
-            )
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.error(f"Error in DLQ consumer: {e}", exc_info=True)

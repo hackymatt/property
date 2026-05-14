@@ -1,6 +1,5 @@
-from src.db_utils import insert_ignore
+from contextlib import asynccontextmanager
 from src import models
-from datetime import datetime, timezone
 
 
 class Update:
@@ -10,15 +9,23 @@ class Update:
         self.schedule_run_id = schedule_run_id
         self.job_run_id = job_run_id
 
-    async def apartment_listing(self, apartment_data):
-        async with self.db.get_session() as session:
+    @asynccontextmanager
+    async def _session(self, session=None):
+        if session is not None:
+            yield session
+        else:
+            async with self.db.get_session() as s:
+                async with s.begin():
+                    yield s
+
+    async def apartment_listing(self, apartment_data, session=None):
+        async with self._session(session) as s:
             stmt = (
                 models.ApartmentListing.__table__.update()
                 .where(models.ApartmentListing.url == apartment_data["url"])
                 .values(apartment_data)
             )
-            await session.execute(stmt)
-            await session.commit()
+            await s.execute(stmt)
         self.logger.info(
             f"[DATA_INGESTION] Updated ApartmentListing for schedule_run_id={self.schedule_run_id} job_run_id={self.job_run_id}"
         )

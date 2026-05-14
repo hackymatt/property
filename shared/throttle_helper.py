@@ -213,6 +213,18 @@ class ThrottleHelper:
 
         return False
 
+    async def pause(self, domain: str, duration: int) -> None:
+        """Signal the throttle service to pause a domain for `duration` seconds."""
+        try:
+            await self.rabbitmq.publish(
+                queue=self.throttle_queue,
+                message={"action": "pause", "domain": domain, "duration": duration},
+                durable=True,
+            )
+            logger.info(f"Pause signal sent for domain={domain} duration={duration}s")
+        except Exception as e:
+            logger.error(f"Error sending pause for domain={domain}: {e}", exc_info=True)
+
     async def release(self, domain: str) -> bool:
         """
         Release a token after completing a request.

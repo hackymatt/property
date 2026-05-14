@@ -2,7 +2,6 @@
 
 import asyncio
 import uuid
-from dataclasses import asdict
 from datetime import datetime, timezone
 from sqlalchemy import select, and_, text
 from src import models
@@ -69,38 +68,55 @@ class Scheduler:
 
     # === Database queries ===
 
-    async def get_schedules_to_run(self) -> list:
-        """Fetch schedules that should run now (next_run <= now and is_active = True)"""
-        async with self.db.get_session() as session:
-            now = datetime.now(timezone.utc).replace(tzinfo=None)
-            stmt = select(models.Schedule).where(
-                and_(
-                    models.Schedule.is_active == True,
-                    models.Schedule.next_run <= now,
-                )
-            )
-            result = await session.execute(stmt)
-            return result.scalars().all()
+    async def claim_schedules_to_run(self) -> list:
+        """Atomically fetch and advance next_run for schedules due to run.
 
-    async def update_next_run(self, schedule_id: int, new_next_run: datetime):
-        """Update the next_run timestamp for a schedule"""
+        Uses SELECT FOR UPDATE SKIP LOCKED so concurrent scheduler replicas
+        never process the same schedule in the same tick.
+        """
         async with self.db.get_session() as session:
-            stmt = select(models.Schedule).where(models.Schedule.id == schedule_id)
-            result = await session.execute(stmt)
-            db_schedule = result.scalar_one_or_none()
-            if db_schedule:
-                db_schedule.next_run = new_next_run
-                await session.commit()
+            async with session.begin():
+                now = datetime.now(timezone.utc).replace(tzinfo=None)
+                stmt = (
+                    select(models.Schedule)
+                    .where(
+                        and_(
+                            models.Schedule.is_active == True,
+                            models.Schedule.next_run <= now,
+                        )
+                    )
+                    .with_for_update(skip_locked=True)
+                )
+                result = await session.execute(stmt)
+                schedules = result.scalars().all()
+
+                # Advance next_run inside the same transaction so the lock
+                # prevents any other instance from picking up the same schedule.
+                for schedule in schedules:
+                    next_run = calculate_next_run(schedule.cron)
+                    if next_run:
+                        await session.execute(
+                            models.Schedule.__table__.update()
+                            .where(models.Schedule.id == schedule.id)
+                            .values(next_run=next_run)
+                        )
+
+                # Return copies of the data we need; session closes after this block.
+                return [
+                    {
+                        "id": s.id,
+                        "name": s.name,
+                        "cron": s.cron,
+                    }
+                    for s in schedules
+                ]
 
     # === Job/Domain data loading ===
 
     async def _get_job_ids_for_schedule(self, schedule_id: int) -> list[int]:
-        """Fetch job IDs associated with a schedule via junction table"""
         async with self.db.get_session() as session:
             result = await session.execute(
-                text(
-                    "SELECT job_id FROM schedule_jobs WHERE schedule_id = :schedule_id"
-                ),
+                text("SELECT job_id FROM schedule_jobs WHERE schedule_id = :schedule_id"),
                 {"schedule_id": schedule_id},
             )
             return [row[0] for row in result.fetchall()]
@@ -140,9 +156,8 @@ class Scheduler:
 
     # === Publishing ===
 
-    async def _build_schedule_payload(self, schedule) -> SchedulePayload:
-        """Build payload for a schedule including jobs and domains"""
-        job_ids = await self._get_job_ids_for_schedule(schedule.id)
+    async def _build_schedule_payload(self, schedule: dict) -> SchedulePayload:
+        job_ids = await self._get_job_ids_for_schedule(schedule["id"])
         jobs_data = await self._get_jobs_with_domains(job_ids)
 
         jobs_payload = [
@@ -157,7 +172,7 @@ class Scheduler:
         ]
 
         return SchedulePayload(
-            schedule_id=schedule.id,
+            schedule_id=schedule["id"],
             jobs=jobs_payload,
         )
 
@@ -167,7 +182,7 @@ class Scheduler:
             logger.warning("RabbitMQ not available; skipping publish")
             return
 
-        message = asdict(payload)
+        message = payload.model_dump()
         schedule_run_id = str(uuid.uuid4())
         routing_key = f"schedule.{schedule_run_id}.{Status.PENDING}"
 
@@ -189,31 +204,29 @@ class Scheduler:
 
     # === Main scheduler loop ===
 
-    async def process_schedule(self, schedule):
-        """Process a single schedule: build payload and publish to queue"""
-        logger.info(f"Processing schedule: {schedule.name}")
+    async def process_schedule(self, schedule: dict):
+        """Process a single schedule dict: build payload and publish to queue."""
+        logger.info("Processing schedule: %s", schedule["name"])
         payload = await self._build_schedule_payload(schedule)
         await self._publish_schedule(payload)
 
     async def _process_scheduled_runs(self):
-        """Fetch and process all schedules that need to run"""
-        schedules = await self.get_schedules_to_run()
+        """Claim and process all schedules due to run.
+
+        next_run is advanced inside claim_schedules_to_run (same transaction as
+        the SELECT FOR UPDATE), so publishing happens after the lock is released.
+        """
+        schedules = await self.claim_schedules_to_run()
 
         if not schedules:
             return
 
-        logger.info(f"Found {len(schedules)} schedule(s) to run")
+        logger.info("Found %d schedule(s) to run", len(schedules))
         for schedule in schedules:
             try:
                 await self.process_schedule(schedule)
-                # Calculate and update next run time
-                next_run = calculate_next_run(schedule.cron)
-                if next_run:
-                    await self.update_next_run(schedule.id, next_run)
             except Exception as e:
-                logger.error(
-                    f"Error processing schedule {schedule.id}: {e}", exc_info=True
-                )
+                logger.error("Error processing schedule %s: %s", schedule["id"], e, exc_info=True)
 
     def _handle_loop_error(self, error: Exception, table_error_logged: bool) -> bool:
         """Handle errors in scheduler loop, return True if table error"""

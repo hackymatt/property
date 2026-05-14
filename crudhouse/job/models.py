@@ -7,14 +7,17 @@ from core.models import (
     OptionalRunIdField,
     DomainNameField,
 )
-from core.choices import JobSource, JobStage
+from core.choices import JobStage
 from domain.models import Domain
 
 
 class JobFieldsMixin(models.Model):
     """Mixin containing common fields shared between Job and JobRunLog."""
 
-    source = models.CharField(max_length=255, choices=JobSource.CHOICES)
+    source = models.CharField(
+        max_length=255,
+        help_text="Must match a ScraperSource name, e.g. 'otodom/sell/apartment/owner'",
+    )
     stage = models.CharField(max_length=20, choices=JobStage.CHOICES)
     url = models.URLField()
 
@@ -23,6 +26,7 @@ class JobFieldsMixin(models.Model):
 
 
 class Job(JobFieldsMixin, BaseModel):
+    name = models.CharField(max_length=255, unique=True, null=True, blank=True)
     domain = models.ForeignKey(Domain, on_delete=models.CASCADE, related_name="jobs")
     is_active = models.BooleanField(
         default=True, help_text="Whether this job is active"

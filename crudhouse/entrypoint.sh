@@ -4,7 +4,7 @@ if [ "$DATABASE" = "postgres" ]
 then
     echo "Waiting for postgres..."
 
-    while ! nc -z $DB_HOST $DB_PORT; do
+    while ! python -c "import socket, sys; s=socket.socket(); s.settimeout(1); r=s.connect_ex(('$DB_HOST', int('$DB_PORT'))); s.close(); sys.exit(r)" 2>/dev/null; do
       sleep 0.1
     done
 

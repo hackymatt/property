@@ -1,6 +1,5 @@
 """Job logger service - consumes job queue and writes JobRunLog rows (async)"""
 
-from dataclasses import asdict
 from datetime import datetime, timezone
 
 from src.logger import logger
@@ -51,13 +50,7 @@ class JobRunLoggerService:
         )
 
     def _parse_payload(self, payload: dict) -> JobPayload:
-        return JobPayload(
-            parent_job_run_id=payload.get("parent_job_run_id"),
-            source=payload.get("source"),
-            stage=payload.get("stage"),
-            url=payload.get("url"),
-            domain_name=payload.get("domain_name"),
-        )
+        return JobPayload.model_validate(payload)
 
     async def _handle_message(self, payload: dict, routing_key: str):
         # Extract schedule_run_id, job_run_id and status from routing key: job.{schedule_run_id}.{job_run_id}.{status}

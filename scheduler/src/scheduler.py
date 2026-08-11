@@ -148,6 +148,7 @@ class Scheduler:
                         "source": job.source,
                         "stage": job.stage,
                         "url": job.url,
+                        "params": job.params or {},
                         "domain": domain.name if domain else None,
                     }
                 )
@@ -167,6 +168,7 @@ class Scheduler:
                 stage=job["stage"],
                 url=job["url"],
                 domain_name=job["domain"],
+                params=job["params"],
             )
             for job in jobs_data
         ]

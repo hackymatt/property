@@ -86,7 +86,11 @@ services:
       RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit}
       RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
-      RABBITMQ_SCHEDULE_QUEUE: ${RABBITMQ_SCHEDULE_QUEUE:-logger_schedule}
+      # Dedicated var: every consumer of schedule_exchange needs its OWN
+      # queue. Sharing one RABBITMQ_SCHEDULE_QUEUE across services puts them
+      # on the same queue, and RabbitMQ then round-robins messages between
+      # them instead of giving each a full copy.
+      RABBITMQ_SCHEDULE_QUEUE: ${RABBITMQ_LOGGER_SCHEDULE_QUEUE:-logger_schedule}
     depends_on:
       - db
       - rabbitmq
@@ -97,13 +101,29 @@ services:
       dockerfile: ./bench/Dockerfile
     environment:
       ENV: ${ENV}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
       RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
       RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
       RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit}
       RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
-      RABBITMQ_SCHEDULE_QUEUE: ${RABBITMQ_SCHEDULE_QUEUE:-bench_schedule}
+      RABBITMQ_EXCHANGE_TYPE: ${RABBITMQ_EXCHANGE_TYPE:-topic}
+      # Dedicated var — see the note on logger. Bench MUST get its own copy
+      # of every schedule message; sharing a queue with logger would make it
+      # miss roughly half of them and silently drop those pipeline runs.
+      RABBITMQ_SCHEDULE_QUEUE: ${RABBITMQ_BENCH_SCHEDULE_QUEUE:-bench_schedule}
+      RABBITMQ_SCHEDULE_EXCHANGE: ${RABBITMQ_SCHEDULE_EXCHANGE:-schedule_exchange}
+      RABBITMQ_SCHEDULE_ROUTING_KEY: ${RABBITMQ_SCHEDULE_ROUTING_KEY:-schedule.*.pending}
+      RABBITMQ_JOB_EXCHANGE: ${RABBITMQ_JOB_EXCHANGE:-job_exchange}
+      RABBITMQ_JOB_STATUS_QUEUE: ${RABBITMQ_JOB_STATUS_QUEUE:-bench_job_status}
+      RABBITMQ_JOB_STATUS_ROUTING_KEY: ${RABBITMQ_JOB_STATUS_ROUTING_KEY:-job.*.*.*}
+      RABBITMQ_DATA_EXCHANGE: ${RABBITMQ_DATA_EXCHANGE:-data_exchange}
     depends_on:
+      - db
       - rabbitmq
     restart: unless-stopped
   scraper:
@@ -124,18 +144,25 @@ services:
       RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
       RABBITMQ_JOB_QUEUE: ${RABBITMQ_JOB_QUEUE:-scraper_jobs}
       RABBITMQ_JOB_EXCHANGE: ${RABBITMQ_JOB_EXCHANGE:-job_exchange}
-      RABBITMQ_DATA_EXCHANGE: ${RABBITMQ_DATA_EXCHANGE:-data_exchange}
       RABBITMQ_EXCHANGE_TYPE: ${RABBITMQ_EXCHANGE_TYPE:-topic}
       RABBITMQ_ROUTING_KEY: ${RABBITMQ_ROUTING_KEY:-job.*.*.pending}
       RABBITMQ_THROTTLE_QUEUE: ${RABBITMQ_THROTTLE_QUEUE:-throttle_requests}
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_DB: ${REDIS_DB:-0}
+      RCN_SCRATCH_DIR: ${RCN_SCRATCH_DIR:-/data/rcn_scratch}
+      PHOTO_STORAGE_DIR: ${PHOTO_STORAGE_DIR:-/data/photos}
+    volumes:
+      # Ephemeral scratch space shared by all scraper replicas, so RCN's
+      # DOWNLOAD -> EXTRACT -> READ stages can hand a binary file to each
+      # other. Deliberately NOT durable: RCN files are cumulative, so losing
+      # this volume just costs one re-download.
+      - rcn_scratch:/data/rcn_scratch
+      # Listing photos. Unlike the scratch volume this one IS the product —
+      # losing it means re-downloading every photo of every listing. Becomes
+      # an S3 bucket later (see src/sdk/storage.py).
+      - photos:/data/photos
     depends_on:
       - db
       - rabbitmq
       - throttling
-      - redis
     restart: unless-stopped
   throttling:
     build:
@@ -164,10 +191,10 @@ services:
       - redis
       - rabbitmq
     restart: unless-stopped
-  data_ingestion:
+  data-ingestion:
     build:
       context: .
-      dockerfile: ./data_ingestion/Dockerfile
+      dockerfile: ./data-ingestion/Dockerfile
     environment:
       ENV: ${ENV}
       DB_HOST: ${DB_HOST}
@@ -180,7 +207,7 @@ services:
       RABBITMQ_USER: ${RABBITMQ_USER:-rabbit}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-rabbit}
       RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
-      RABBITMQ_DATA_QUEUE: ${RABBITMQ_DATA_QUEUE:-data_ingestion_jobs}
+      RABBITMQ_DATA_QUEUE: ${RABBITMQ_DATA_QUEUE:-data-ingestion-jobs}
       RABBITMQ_DATA_EXCHANGE: ${RABBITMQ_DATA_EXCHANGE:-data_exchange}
       RABBITMQ_EXCHANGE_TYPE: ${RABBITMQ_EXCHANGE_TYPE:-topic}
       RABBITMQ_DATA_ROUTING_KEY: ${RABBITMQ_DATA_ROUTING_KEY:-data.*.*.pending}
@@ -227,3 +254,5 @@ volumes:
   staticfiles:
   redis_data:
   rabbitmq_data:
+  rcn_scratch:
+  photos:

@@ -40,7 +40,7 @@ class DomainViewSet(viewsets.ModelViewSet):
 
 
 class ScraperSourceViewSet(viewsets.ModelViewSet):
-    queryset = ScraperSource.objects.select_related("domain").order_by("name")
+    queryset = ScraperSource.objects.select_related("domain").prefetch_related("stages").order_by("name")
     serializer_class = ScraperSourceSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["name", "domain__name", "offer_url_prefix"]

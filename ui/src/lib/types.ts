@@ -12,18 +12,37 @@ export interface Domain {
   updated_at: string;
 }
 
+export type SourceKind = "PORTAL_LISTING" | "FILE_REGISTRY";
+export type PropertyType = "APARTMENT" | "HOUSE" | "LAND" | "COMMERCIAL";
+
+/**
+ * Stage names are plain strings, not a closed union: the vocabulary varies
+ * per source_kind (portals use list_pages/list_items/get_item, file
+ * registries use discover/download/extract/transform/load) and new kinds
+ * can add their own. STAGE_PRESETS in components/sources/SourceDialog.tsx
+ * holds the known ones for convenience only.
+ */
+export interface ScraperSourceStage {
+  id?: number;
+  stage_name: string;
+  order: number;
+  /** Points at a Stage class registered in the scraper repo's STAGE_REGISTRY, e.g. "otodom.ListPagesStage". */
+  code_ref: string;
+}
+
 export interface ScraperSource {
   id: number;
   name: string;
   domain: number;
   domain_name: string;
+  source_kind: SourceKind;
+  property_type: PropertyType;
   offer_url_prefix: string;
+  /** Source-level settings available to every stage, e.g. {"layer": "transakcje_lokale"} for RCN. */
+  config: Record<string, unknown>;
   is_active: boolean;
   notes: string;
-  preamble_code: string;
-  list_pages_code: string;
-  list_items_code: string;
-  get_item_code: string;
+  stages: ScraperSourceStage[];
   created_at: string;
   updated_at: string;
 }
@@ -34,8 +53,11 @@ export interface Job {
   domain: number;
   domain_name: string;
   source: string;
-  stage: "list_pages" | "list_items" | "get_item";
+  /** Must match one of the source's ScraperSourceStage.stage_name values. */
+  stage: string;
   url: string;
+  /** Source-specific input for the first stage, e.g. {"teryt_codes": "all"} for RCN. */
+  params: Record<string, unknown>;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -64,7 +86,7 @@ export type ExecutionStatus = "pending" | "running" | "success" | "failed" | "ca
 export interface JobRunLog {
   id: number;
   source: string;
-  stage: "list_pages" | "list_items" | "get_item";
+  stage: string;
   url: string;
   domain_name: string;
   job_run_id: string;

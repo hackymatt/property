@@ -1,38 +1,37 @@
 from django.contrib import admin
-from .models import ScraperSource
+from .models import ScraperSource, ScraperSourceStage
+
+
+class ScraperSourceStageInline(admin.TabularInline):
+    model = ScraperSourceStage
+    extra = 1
+    fields = ["order", "stage_name", "code_ref"]
+    ordering = ["order"]
 
 
 @admin.register(ScraperSource)
 class ScraperSourceAdmin(admin.ModelAdmin):
-    list_display = ["name", "domain", "is_active", "created_at", "updated_at"]
-    list_filter = ["is_active", "domain"]
+    list_display = ["name", "domain", "source_kind", "property_type", "is_active", "updated_at"]
+    list_filter = ["is_active", "source_kind", "property_type", "domain"]
     search_fields = ["name"]
     readonly_fields = ["created_at", "updated_at"]
+    inlines = [ScraperSourceStageInline]
     fieldsets = [
         (None, {
-            "fields": ["name", "domain", "offer_url_prefix", "is_active", "notes"],
+            "fields": [
+                "name", "domain", "source_kind", "property_type",
+                "offer_url_prefix", "is_active", "notes",
+            ],
         }),
-        ("Preamble (shared helpers)", {
-            "fields": ["preamble_code"],
-            "classes": ["collapse"],
+        ("Config", {
+            "fields": ["config"],
             "description": (
-                "Executed before every snippet. Define imports, site-specific fetch helpers, etc. "
-                "Available: fetch (async), deep_get, get_first, all Payload classes."
+                "Source-level settings, available to every stage. "
+                'RCN: {"layer": "transakcje_lokale"} — one source per layer.'
             ),
         }),
-        ("list_pages snippet", {
-            "fields": ["list_pages_code"],
+        ("Timestamps", {
+            "fields": ["created_at", "updated_at"],
             "classes": ["collapse"],
-            "description": "Return List[str] of page URLs.",
-        }),
-        ("list_items snippet", {
-            "fields": ["list_items_code"],
-            "classes": ["collapse"],
-            "description": "Return List[str] of item URLs.",
-        }),
-        ("get_item snippet", {
-            "fields": ["get_item_code"],
-            "classes": ["collapse"],
-            "description": "Return a DataPayload instance.",
         }),
     ]

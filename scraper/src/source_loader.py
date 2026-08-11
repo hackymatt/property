@@ -16,10 +16,9 @@ class SourceConfig:
     name: str
     domain_name: str
     offer_url_prefix: str
-    preamble_code: str
-    list_pages_code: str
-    list_items_code: str
-    get_item_code: str
+    source_kind: str
+    property_type: str
+    config: dict
 
 
 class SourceLoader:
@@ -78,10 +77,9 @@ class SourceLoader:
                     name=r.scraper_source.name,
                     domain_name=r.domain.name,
                     offer_url_prefix=r.scraper_source.offer_url_prefix or "",
-                    preamble_code=r.scraper_source.preamble_code or "",
-                    list_pages_code=r.scraper_source.list_pages_code,
-                    list_items_code=r.scraper_source.list_items_code,
-                    get_item_code=r.scraper_source.get_item_code,
+                    source_kind=r.scraper_source.source_kind,
+                    property_type=r.scraper_source.property_type,
+                    config=r.scraper_source.config or {},
                 )
                 for r in rows
             }

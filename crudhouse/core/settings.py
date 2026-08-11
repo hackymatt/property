@@ -56,8 +56,8 @@ INSTALLED_APPS = [
     "domain",
     "job",
     "schedule",
-    "property",
     "scraper_source",
+    "property_raw",
     "api",
 ]
 

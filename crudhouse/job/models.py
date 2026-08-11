@@ -7,7 +7,6 @@ from core.models import (
     OptionalRunIdField,
     DomainNameField,
 )
-from core.choices import JobStage
 from domain.models import Domain
 
 
@@ -18,7 +17,14 @@ class JobFieldsMixin(models.Model):
         max_length=255,
         help_text="Must match a ScraperSource name, e.g. 'otodom/sell/apartment/owner'",
     )
-    stage = models.CharField(max_length=20, choices=JobStage.CHOICES)
+    stage = models.CharField(
+        max_length=100,
+        help_text=(
+            "Must match a ScraperSourceStage.stage_name for this source. Not "
+            "choices-restricted here — the stage vocabulary varies per "
+            "ScraperSource.source_kind, see scraper_source app."
+        ),
+    )
     url = models.URLField()
 
     class Meta:
@@ -26,8 +32,17 @@ class JobFieldsMixin(models.Model):
 
 
 class Job(JobFieldsMixin, BaseModel):
-    name = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    name = models.CharField(max_length=255, unique=True)
     domain = models.ForeignKey(Domain, on_delete=models.CASCADE, related_name="jobs")
+    params = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Source-specific parameters for this job, passed to the first stage. "
+            "Portal sources usually need none (the scope is the url). "
+            'RCN example — one county: {"teryt_codes": ["1261"]}, all: {"teryt_codes": "all"}.'
+        ),
+    )
     is_active = models.BooleanField(
         default=True, help_text="Whether this job is active"
     )

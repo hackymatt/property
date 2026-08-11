@@ -1,4 +1,4 @@
-"""Configuration for data_ingestion service"""
+"""Configuration for data-ingestion service"""
 
 import os
 from dotenv import load_dotenv
@@ -23,7 +23,7 @@ RABBITMQ_USER = os.getenv("RABBITMQ_USER", "rabbit")
 RABBITMQ_PASSWORD = os.getenv("RABBITMQ_PASSWORD", "rabbit")
 RABBITMQ_VHOST = os.getenv("RABBITMQ_VHOST", "/")
 
-RABBITMQ_DATA_QUEUE = os.getenv("RABBITMQ_DATA_QUEUE", "data_ingestion_jobs")
+RABBITMQ_DATA_QUEUE = os.getenv("RABBITMQ_DATA_QUEUE", "data-ingestion-jobs")
 RABBITMQ_DATA_EXCHANGE = os.getenv("RABBITMQ_DATA_EXCHANGE", "data_exchange")
 RABBITMQ_EXCHANGE_TYPE = os.getenv("RABBITMQ_EXCHANGE_TYPE", "topic")
 RABBITMQ_DATA_ROUTING_KEY = os.getenv("RABBITMQ_DATA_ROUTING_KEY", "data.*.*.pending")

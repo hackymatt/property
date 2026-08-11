@@ -66,6 +66,17 @@ export default function SourcesPage() {
   const colDefs: ColDef<ScraperSource>[] = [
     { field: "name", flex: 3, filter: true, sortable: true },
     { field: "domain_name", headerName: "Domain", flex: 1, filter: true, sortable: true },
+    { field: "source_kind", headerName: "Kind", width: 140, filter: true, sortable: true },
+    { field: "property_type", headerName: "Property", width: 120, filter: true, sortable: true },
+    {
+      headerName: "Stages", width: 90, sortable: false, filter: false,
+      valueGetter: ({ data }: { data?: ScraperSource }) => data?.stages?.length ?? 0,
+    },
+    {
+      field: "config", headerName: "Config", flex: 2, sortable: false, filter: false,
+      valueFormatter: ({ value }: { value?: Record<string, unknown> }) =>
+        value && Object.keys(value).length ? JSON.stringify(value) : "",
+    },
     {
       field: "is_active", headerName: "Active", width: 100, filter: true,
       cellRenderer: ({ value }: { value: boolean }) => (

@@ -60,6 +60,9 @@ class ScheduleRunLoggerService:
         schedule_payload = self._parse_payload(payload)
         schedule_id = schedule_payload.schedule_id
         metadata = {"jobs": [job.model_dump() for job in schedule_payload.jobs]}
+        # The terminal message carries run statistics instead of a job list.
+        if schedule_payload.metadata:
+            metadata.update(schedule_payload.metadata)
 
         async with self.db.get_session() as session:
             now = datetime.now(timezone.utc)

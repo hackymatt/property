@@ -2,4 +2,4 @@
 
 from shared.logger import get_logger
 
-logger = get_logger("data_ingestion")
+logger = get_logger("data-ingestion")

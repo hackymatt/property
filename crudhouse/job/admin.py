@@ -10,7 +10,17 @@ class JobAdmin(ImportExportModelAdmin, admin.ModelAdmin):
     search_fields = ("source", "url", "domain__name")
     readonly_fields = ("created_at", "updated_at")
     fieldsets = (
-        ("Job Info", {"fields": ("domain", "source", "stage", "url", "is_active")}),
+        ("Job Info", {"fields": ("name", "domain", "source", "stage", "url", "is_active")}),
+        (
+            "Parameters",
+            {
+                "fields": ("params",),
+                "description": (
+                    "Passed to the first stage. Portal sources usually need none. "
+                    'RCN — one county: {"teryt_codes": ["1261"]}; all counties: {"teryt_codes": "all"}.'
+                ),
+            },
+        ),
         (
             "Timestamps",
             {"fields": ("created_at", "updated_at"), "classes": ("collapse",)},

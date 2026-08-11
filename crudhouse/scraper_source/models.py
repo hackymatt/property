@@ -1,24 +1,14 @@
 from django.db import models
+from core.choices import PropertyType, SourceKind
 from core.models import BaseModel
 from domain.models import Domain
 
 
 class ScraperSource(BaseModel):
-    """Defines how to scrape any website via three user-defined code snippets.
-
-    All snippets are executed as async Python function bodies. Each must end
-    with a `return` statement.
-
-    Available in every snippet:
-        url (str)            — the URL being processed
-        fetch (async)        — async fetch(url, method='GET', **kwargs) -> {status, text, headers, url}
-        OFFER_URL_PREFIX     — configured base URL for item links
-        deep_get(dct, keys)  — safe nested dict accessor
-        get_first(lst)       — returns lst[0] or None
-        AdPayload, LocationPayload, ApartmentPayload, DataPayload — payload constructors
-
-    Preamble is executed first and its globals (imports, helpers) are available in all three snippets.
-    """
+    """Configuration for a scrapable/ingestible source (a portal search, or a
+    file registry like RCN). Holds no executable code — the handler logic for
+    each of its stages lives as a versioned Python class in the `scraper`
+    service repo (see ScraperSourceStage.code_ref)."""
 
     name = models.CharField(
         max_length=255,
@@ -26,33 +16,32 @@ class ScraperSource(BaseModel):
         help_text="Unique identifier used in Job.source, e.g. 'otodom/sell/apartment/owner'",
     )
     domain = models.ForeignKey(Domain, on_delete=models.CASCADE, related_name="scraper_sources")
+    source_kind = models.CharField(
+        max_length=20,
+        choices=SourceKind.CHOICES,
+        help_text="Determines which stage vocabulary applies (see ScraperSourceStage).",
+    )
+    property_type = models.CharField(
+        max_length=20,
+        choices=PropertyType.CHOICES,
+        help_text="Default PropertyRaw.property_type for records produced by this source.",
+    )
     offer_url_prefix = models.CharField(
         max_length=500,
         blank=True,
-        help_text="Base URL for item links, available as OFFER_URL_PREFIX in snippets",
+        help_text="Base URL for item links (PORTAL_LISTING sources only).",
+    )
+    config = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Source-level settings shared by all its jobs, available to every stage. "
+            'RCN example: {"layer": "transakcje_lokale"} — one source per GPKG layer, '
+            "since layers have different columns and map to different property types."
+        ),
     )
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
-
-    preamble_code = models.TextField(
-        blank=True,
-        help_text=(
-            "Shared code run before each snippet. Define site-specific helpers here, e.g.:\n"
-            "  import re, json, html as html_module\n"
-            "  async def get_next_data(url):\n"
-            "      resp = await fetch(url, headers={...})\n"
-            "      ..."
-        ),
-    )
-    list_pages_code = models.TextField(
-        help_text="Return List[str] of page URLs. Use fetch to retrieve the page and preamble helpers to parse it."
-    )
-    list_items_code = models.TextField(
-        help_text="Return List[str] of item URLs. Use fetch, OFFER_URL_PREFIX, and preamble helpers."
-    )
-    get_item_code = models.TextField(
-        help_text="Return a DataPayload instance. Use fetch, payload constructors, and preamble helpers."
-    )
 
     class Meta:
         db_table = "scraper_source"
@@ -60,3 +49,31 @@ class ScraperSource(BaseModel):
 
     def __str__(self):
         return self.name
+
+
+class ScraperSourceStage(BaseModel):
+    """Ordered registry of the stages a ScraperSource runs through. Holds no
+    code — `code_ref` points to a Stage class registered in the `scraper`
+    service's STAGE_REGISTRY (e.g. "otodom.ListPagesStage")."""
+
+    source = models.ForeignKey(ScraperSource, on_delete=models.CASCADE, related_name="stages")
+    stage_name = models.CharField(
+        max_length=100,
+        help_text="e.g. 'list_pages', 'discover' — must match shared.consts.Stage values.",
+    )
+    order = models.PositiveIntegerField(help_text="Execution order within this source, starting at 1.")
+    code_ref = models.CharField(
+        max_length=255,
+        help_text="Dotted reference to the Stage class in the scraper repo's STAGE_REGISTRY, e.g. 'otodom.ListPagesStage'.",
+    )
+
+    class Meta:
+        db_table = "scraper_source_stage"
+        ordering = ["source", "order"]
+        constraints = [
+            models.UniqueConstraint(fields=["source", "stage_name"], name="uniq_source_stage_name"),
+            models.UniqueConstraint(fields=["source", "order"], name="uniq_source_stage_order"),
+        ]
+
+    def __str__(self):
+        return f"{self.source.name} [{self.order}] {self.stage_name}"

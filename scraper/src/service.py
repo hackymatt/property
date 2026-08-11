@@ -1,32 +1,36 @@
-"""Scraper service - consumes job queue and executes scrapers"""
+"""Scraper service - consumes job queue, executes exactly one stage per job.
+
+Does NOT decide what runs next (that's bench's job, based on
+ScraperSourceStage order) — publishes a status event with the stage's raw
+result attached and stops. This split (execute one stage / decide next
+stage) is what lets the same engine serve both PORTAL_LISTING (Otodom) and
+FILE_REGISTRY (RCN) sources without the engine knowing anything about
+either domain."""
 
 import uuid
 
 from config import (
     RABBITMQ_JOB_QUEUE,
     RABBITMQ_JOB_EXCHANGE,
-    RABBITMQ_DATA_EXCHANGE,
     RABBITMQ_EXCHANGE_TYPE,
     RABBITMQ_ROUTING_KEY,
     RABBITMQ_THROTTLE_QUEUE,
     STARTUP_RETRIES,
     STARTUP_RETRY_DELAY,
 )
-from shared.payloads import JobPayload, DataPayload
-from shared.consts import Status, Stage
+from shared.payloads import JobPayload
+from shared.consts import Status
 from shared.throttle_helper import ThrottleHelper
-from src.sdk.request import RetriableError, TooManyRequestsError
+from src.sdk.request import RetriableError
 from src.source_loader import SourceLoader
-from src.deduplicator import JobDeduplicator
 from src.scrape import scrape
 from src.logger import logger
 
 
 class ScraperService:
-    def __init__(self, rabbitmq, db, deduplicator: JobDeduplicator):
+    def __init__(self, rabbitmq, db):
         self.rabbitmq = rabbitmq
         self.db = db
-        self.deduplicator = deduplicator
         self.throttle_helper = None
         self.source_loader = None
 
@@ -69,14 +73,6 @@ class ScraperService:
         job_payload = self._parse_payload(payload)
         params = JobPayload(**payload)
 
-        # Deduplicate at consume time — drop if already processed recently
-        if not await self.deduplicator.mark_processed(params.source, params.stage, params.url):
-            logger.info(
-                "[SCRAPER] Duplicate job skipped source=%s stage=%s url=%s",
-                params.source, params.stage, params.url,
-            )
-            return
-
         logger.info(
             "[SCRAPER] Received %s job schedule_run_id=%s job_run_id=%s: %s",
             status, schedule_run_id, job_run_id, payload,
@@ -85,30 +81,31 @@ class ScraperService:
         try:
             await self._publish_status(schedule_run_id, job_run_id, Status.RUNNING, job_payload)
 
-            result = await scrape(params, throttle_helper=self.throttle_helper, source_loader=self.source_loader)
+            result = await scrape(
+                params,
+                throttle_helper=self.throttle_helper,
+                source_loader=self.source_loader,
+                rabbitmq=self.rabbitmq,
+                schedule_run_id=schedule_run_id,
+                job_run_id=job_run_id,
+            )
 
             logger.info("[SCRAPER] Job result job_run_id=%s: %s", job_run_id, result)
 
-            await self._create_followup_jobs(
-                schedule_run_id=schedule_run_id,
-                parent_job_run_id=job_run_id,
-                job_payload=job_payload,
-                stage=params.stage,
-                result=result,
+            await self._publish_status(
+                schedule_run_id, job_run_id, Status.SUCCESS,
+                job_payload.model_copy(
+                    update={"metadata": {**(job_payload.metadata or {}), "result": result}}
+                ),
             )
 
             logger.info("[SCRAPER] Job completed successfully job_run_id=%s", job_run_id)
-            await self._publish_status(
-                schedule_run_id, job_run_id, Status.SUCCESS,
-                job_payload.model_copy(update={"metadata": {"result": result if isinstance(result, list) else None}}),
-            )
 
         except RetriableError as exc:
             logger.warning(
                 "[SCRAPER] Retriable error on job_run_id=%s (%s), requeueing after %ss pause",
                 job_run_id, exc, exc.retry_after,
             )
-            await self.deduplicator.clear(params.source, params.stage, params.url)
             await self.rabbitmq.publish_to_exchange(
                 exchange=RABBITMQ_JOB_EXCHANGE,
                 routing_key=f"job.{schedule_run_id}.{uuid.uuid4()}.pending",
@@ -137,56 +134,4 @@ class ScraperService:
         logger.info(
             "[SCRAPER] Published %s status for schedule_run_id=%s job_run_id=%s",
             status, schedule_run_id, job_run_id,
-        )
-
-    async def _create_followup_jobs(self, schedule_run_id, parent_job_run_id, job_payload, stage, result):
-        stage_mapping = {
-            Stage.LIST_PAGES: Stage.LIST_ITEMS,
-            Stage.LIST_ITEMS: Stage.GET_ITEM,
-            Stage.GET_ITEM: None,
-        }
-
-        next_stage = stage_mapping.get(stage)
-        if not next_stage:
-            routing_key = f"data.{schedule_run_id}.{parent_job_run_id}.pending"
-            await self.rabbitmq.publish_to_exchange(
-                exchange=RABBITMQ_DATA_EXCHANGE,
-                routing_key=routing_key,
-                message=result.model_dump(),
-                exchange_type=RABBITMQ_EXCHANGE_TYPE,
-            )
-            logger.info("[SCRAPER] Forwarded DataPayload for job_run_id=%s", parent_job_run_id)
-            return
-
-        urls = result
-        if not urls:
-            logger.info("[SCRAPER] No URLs in result — no follow-up jobs created")
-            return
-
-        jobs_created = 0
-        skipped = 0
-        for url in urls:
-            if not isinstance(url, str):
-                logger.warning("[SCRAPER] Skipping non-string URL: %s", url)
-                continue
-
-            if not await self.deduplicator.mark_queued(job_payload.source, next_stage, url):
-                skipped += 1
-                continue
-
-            job_run_id = str(uuid.uuid4())
-            follow_up = job_payload.model_copy(
-                update={"parent_job_run_id": parent_job_run_id, "stage": next_stage, "url": url}
-            )
-            await self.rabbitmq.publish_to_exchange(
-                exchange=RABBITMQ_JOB_EXCHANGE,
-                routing_key=f"job.{schedule_run_id}.{job_run_id}.pending",
-                message=follow_up.model_dump(),
-                exchange_type=RABBITMQ_EXCHANGE_TYPE,
-            )
-            jobs_created += 1
-
-        logger.info(
-            "[SCRAPER] Created %d follow-up jobs (%d duplicates skipped): %s → %s",
-            jobs_created, skipped, stage, next_stage,
         )

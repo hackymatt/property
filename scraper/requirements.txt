@@ -5,4 +5,13 @@ pyee==13.0.0
 typing_extensions==4.15.0
 aiohttp==3.8.5
 
+# RCN (FILE_REGISTRY) stages: src/sources/rcn/
+# geopandas is required by pyogrio.read_dataframe() — without it TransformStage
+# fails with ImportError only at run time, after the archive is downloaded.
+pandas==2.1.4
+geopandas==0.14.4
+pyogrio==0.7.2
+shapely==2.0.2
+pyproj==3.6.1
+
 

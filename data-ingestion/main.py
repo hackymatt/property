@@ -17,7 +17,7 @@ from src.service import Service
 
 async def main():
     try:
-        db = DatabaseManager(database_url=DATABASE_URL, logger_name="data_ingestion")
+        db = DatabaseManager(database_url=DATABASE_URL, logger_name="data-ingestion")
 
         rabbitmq = RabbitMQClient(
             host=RABBITMQ_HOST,

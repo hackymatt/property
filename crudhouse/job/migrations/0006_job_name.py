@@ -11,6 +11,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="job",
             name="name",
-            field=models.CharField(blank=True, max_length=255, null=True, unique=True),
+            field=models.CharField(max_length=255, unique=True),
         ),
     ]

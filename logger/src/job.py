@@ -52,6 +52,25 @@ class JobRunLoggerService:
     def _parse_payload(self, payload: dict) -> JobPayload:
         return JobPayload.model_validate(payload)
 
+    @staticmethod
+    def _summarize_metadata(metadata):
+        """`result` is transient plumbing between scraper and bench — for a
+        final stage it holds the whole batch of records, which already lands
+        in PropertyRaw. Persisting it here would duplicate megabytes per run
+        log row, so keep only its size. Everything else (error_message,
+        file_id, fingerprint, ...) is retained verbatim — bench's
+        change-detection reads fingerprint back out of these rows."""
+        if not isinstance(metadata, dict):
+            return metadata
+
+        summarized = dict(metadata)
+        # Bulky, transient plumbing: keep the size, drop the payload.
+        for key in ("result", "image_urls"):
+            if key in summarized:
+                value = summarized.pop(key)
+                summarized[f"{key}_count"] = len(value) if isinstance(value, list) else None
+        return summarized
+
     async def _handle_message(self, payload: dict, routing_key: str):
         # Extract schedule_run_id, job_run_id and status from routing key: job.{schedule_run_id}.{job_run_id}.{status}
         parts = routing_key.split(".")
@@ -61,7 +80,7 @@ class JobRunLoggerService:
 
         job_payload = self._parse_payload(payload)
         parent_job_run_id = job_payload.parent_job_run_id or None
-        metadata = payload.get("metadata", {})
+        metadata = self._summarize_metadata(payload.get("metadata", {}))
 
         async with self.db.get_session() as session:
             now = datetime.now(timezone.utc)

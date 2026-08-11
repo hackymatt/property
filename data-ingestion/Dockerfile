@@ -7,6 +7,6 @@ COPY shared ./shared
 RUN pip install --no-cache-dir -r shared/requirements.txt
 
 # Service code
-COPY data_ingestion ./
+COPY data-ingestion ./
 
 CMD ["python", "main.py"]
